@@ -3,6 +3,7 @@ import test from 'node:test';
 import { getDashboardEnv } from '../lib/env.js';
 import { discoverAgents, filterCollection } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
+import { getHonchoSnapshot } from '../lib/honcho-client.js';
 
 test('getDashboardEnv keeps secrets server-side and applies safe defaults', () => {
   const env = getDashboardEnv({});
@@ -44,4 +45,37 @@ test('getDemoSnapshot includes Hermes-like operational data and clear demo mode'
   assert.ok(snapshot.workspaces.length >= 2);
   assert.ok(snapshot.peers.some((peer) => peer.metadata?.type === 'agent'));
   assert.ok(snapshot.performance.some((point) => typeof point.latency_ms === 'number'));
+});
+
+test('getHonchoSnapshot reads v3 workspace-scoped lists and derives session message counts', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  const requested = [];
+  process.env.HONCHO_BASE_URL = 'http://honcho.example';
+  process.env.HONCHO_WORKSPACE_ID = 'workspace-1';
+  process.env.USE_DEMO_DATA = 'false';
+  globalThis.fetch = async (url, init) => {
+    requested.push({ path: new URL(String(url)).pathname, method: init?.method });
+    const path = new URL(String(url)).pathname;
+    const payloads = {
+      '/v3/workspaces/workspace-1/peers/list': { peers: [{ id: 'peer-1' }] },
+      '/v3/workspaces/workspace-1/sessions/list': { sessions: [{ id: 'session-1', is_active: true }] },
+      '/v3/workspaces/workspace-1/conclusions/list': { conclusions: [] },
+      '/v3/workspaces/workspace-1/sessions/session-1/messages/list': { messages: [{ id: 'message-1', content: 'hi' }] }
+    };
+    return new Response(JSON.stringify(payloads[path] || {}), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const snapshot = await getHonchoSnapshot();
+    assert.equal(snapshot.status.ok, true);
+    assert.equal(snapshot.sessions[0].status, 'active');
+    assert.equal(snapshot.sessions[0].message_count, 1);
+    assert.equal(snapshot.messages[0].workspace_id, 'workspace-1');
+    assert.ok(requested.every((request) => request.method === 'POST'));
+    assert.ok(requested.every((request) => request.path.startsWith('/v3/workspaces/workspace-1/')));
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
 });

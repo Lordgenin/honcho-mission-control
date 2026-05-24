@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardEnv } from '../../../../lib/env.js';
+import { isAllowedProxyPath, isReadOnlyPostPath } from '../../../../lib/proxy-policy.js';
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 async function proxy(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
   const env = getDashboardEnv();
-  if (MUTATING.has(request.method) && !env.ENABLE_MUTATIONS) return NextResponse.json({ ok: false, error: 'mutations-disabled', message: 'Set ENABLE_MUTATIONS=true to enable write operations.' }, { status: 403 });
   const { path = [] } = await context.params;
+  if (!isAllowedProxyPath(path)) return NextResponse.json({ ok: false, error: 'unsupported-proxy-path', message: 'Only Honcho v3 API paths are proxied.' }, { status: 404 });
+  const readOnlyPost = request.method === 'POST' && isReadOnlyPostPath(path);
+  if (MUTATING.has(request.method) && !readOnlyPost && !env.ENABLE_MUTATIONS) return NextResponse.json({ ok: false, error: 'mutations-disabled', message: 'Set ENABLE_MUTATIONS=true to enable write operations.' }, { status: 403 });
   const base = env.HONCHO_BASE_URL.endsWith('/') ? env.HONCHO_BASE_URL : env.HONCHO_BASE_URL + '/';
   const url = new URL(path.join('/'), base);
-  request.nextUrl.searchParams.forEach((value, key) => url.searchParams.set(key, value));
+  request.nextUrl.searchParams.forEach((value: string, key: string) => url.searchParams.set(key, value));
   const headers: Record<string, string> = { accept: 'application/json' };
   if (env.HONCHO_API_KEY) headers.authorization = 'Bearer ' + env.HONCHO_API_KEY;
   const init: RequestInit = { method: request.method, headers, cache: 'no-store' };
