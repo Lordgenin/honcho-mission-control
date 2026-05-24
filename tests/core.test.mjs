@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getDashboardEnv } from '../lib/env.js';
+import { getDashboardEnv, getPublicDashboardEnv } from '../lib/env.js';
 import { discoverAgents, filterCollection } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
@@ -12,6 +12,41 @@ test('getDashboardEnv keeps secrets server-side and applies safe defaults', () =
   assert.equal(env.USE_DEMO_DATA, false);
   assert.equal(env.NEXT_PUBLIC_DASHBOARD_NAME, 'Honcho Mission Control');
   assert.equal(Object.prototype.propertyIsEnumerable.call(env, 'HONCHO_API_KEY'), false);
+});
+
+test('getPublicDashboardEnv redacts upstream Honcho URL and exposes API key presence only', () => {
+  const publicEnv = getPublicDashboardEnv({
+    HONCHO_BASE_URL: 'http://127.0.0.1:8001/private-path',
+    HONCHO_API_KEY: 'example-api-key-present',
+    HONCHO_WORKSPACE_ID: 'workspace-1',
+    USE_DEMO_DATA: 'false',
+    ENABLE_MUTATIONS: 'false'
+  });
+
+  assert.equal(publicEnv.HONCHO_BASE_URL, undefined);
+  assert.equal(publicEnv.HONCHO_API_KEY, undefined);
+  assert.equal(publicEnv.hasHonchoApiKey, true);
+  assert.equal(publicEnv.honchoConnection, 'loopback/self-hosted');
+  assert.equal(JSON.stringify(publicEnv).includes('127.0.0.1'), false);
+  assert.equal(JSON.stringify(publicEnv).includes('example-api-key-present'), false);
+});
+
+test('getHonchoSnapshot does not serialize raw base URL or API key secrets', async () => {
+  const originalEnv = { ...process.env };
+  process.env.HONCHO_BASE_URL = 'http://127.0.0.1:8001/internal-honcho';
+  process.env.HONCHO_API_KEY = 'example-api-key-present';
+  process.env.USE_DEMO_DATA = 'true';
+
+  try {
+    const snapshot = await getHonchoSnapshot();
+    const serialized = JSON.stringify(snapshot);
+    assert.equal(serialized.includes('127.0.0.1'), false);
+    assert.equal(serialized.includes('internal-honcho'), false);
+    assert.equal(serialized.includes('example-api-key-present'), false);
+    assert.equal(snapshot.env.hasHonchoApiKey, true);
+  } finally {
+    process.env = originalEnv;
+  }
 });
 
 test('getDashboardEnv parses true booleans explicitly only', () => {
