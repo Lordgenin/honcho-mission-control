@@ -45,6 +45,12 @@ npm run build
 docker compose -f docker-compose.dashboard.yml up --build
 ```
 
+## Documentation
+
+- [Public self-hosting guide](docs/public-self-hosting.md)
+- [API client and proxy behavior](docs/API_CLIENT.md)
+- [Route inventory](docs/ROUTES.md)
+
 ## Known limitations
 
 The live Honcho REST shapes can vary by deployment. The client normalizes common collection envelopes (`items`, `results`, `data`, and resource-specific keys) and fails safely for offline/auth/malformed/slow responses. If a specific Honcho deployment exposes different endpoint names, update `lib/honcho-client.js` and docs/API_CLIENT.md.
