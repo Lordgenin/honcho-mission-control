@@ -7,7 +7,7 @@ Production-oriented Next.js App Router dashboard for self-hosted Honcho + Hermes
 - Next.js App Router + TypeScript + Tailwind UI shell.
 - Required routes for dashboard, workspaces, peers, sessions, messages, conclusions, context, API playground, webhooks, performance, settings, and Hermes agents.
 - Server-side Honcho client and `/api/honcho/[...path]` proxy so `HONCHO_API_KEY` never reaches browser code.
-- Read-only default posture. Mutating proxy requests return 403 unless `ENABLE_MUTATIONS=true`.
+- Read-only default posture. Honcho v3 `POST` list/search routes are allowed for live reads, while mutating proxy requests return 403 unless `ENABLE_MUTATIONS=true`.
 - `USE_DEMO_DATA=true` mode with realistic Hermes agents, sessions, messages, conclusions, webhooks, and performance data. The shell labels demo/live and read-only/mutations state.
 - Search components that actually filter nested records and show no-results states.
 - Loading, error/retry, empty, and unknown-route fallback surfaces.

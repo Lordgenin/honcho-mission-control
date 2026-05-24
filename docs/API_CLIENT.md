@@ -2,7 +2,7 @@
 
 Core files:
 
-- `lib/env.js` parses runtime environment and keeps `HONCHO_API_KEY` non-enumerable.
+- `lib/env.js` parses runtime environment, keeps `HONCHO_API_KEY` non-enumerable, and exposes only client-safe runtime status through `getPublicDashboardEnv`.
 - `lib/honcho-client.js` fetches server-side collections, handles timeout/offline/auth/malformed JSON states, and falls back to partial live snapshots when some endpoints fail.
 - `app/api/honcho/[...path]/route.ts` is the server-side proxy that avoids browser CORS and keeps credentials out of client bundles.
 
@@ -17,7 +17,29 @@ Core files:
 
 ## Proxy behavior
 
-GET requests are proxied to `${HONCHO_BASE_URL}/<path>`. POST/PUT/PATCH/DELETE return 403 unless `ENABLE_MUTATIONS=true`. Upstream timeout returns a safe 502 JSON response.
+The proxy forwards requests to `${HONCHO_BASE_URL}/<path>` from the Next.js server only, so browsers never receive the raw Honcho origin or API key.
+
+Default policy:
+
+- Non-v3 Honcho API paths are rejected, except explicit health checks such as `/health` and `/v3/health`.
+- `GET` requests to allowed paths are proxied read-only.
+- Honcho v3 read/list operations use `POST`; the proxy therefore allows v3 `POST` paths ending in `/list` or `/search` while mutations are disabled.
+- Other `POST`, `PUT`, `PATCH`, and `DELETE` requests return `403` unless `ENABLE_MUTATIONS=true`.
+- Upstream timeout/offline failures return safe 502 JSON responses without raw secrets or stack traces.
+
+Examples allowed with default settings:
+
+- `POST /api/honcho/v3/workspaces/list`
+- `POST /api/honcho/v3/workspaces/{workspaceId}/peers/list`
+- `POST /api/honcho/v3/workspaces/{workspaceId}/sessions/list`
+- `POST /api/honcho/v3/workspaces/{workspaceId}/sessions/{sessionId}/messages/list`
+- `POST /api/honcho/v3/workspaces/{workspaceId}/conclusions/list`
+
+Examples blocked with default settings:
+
+- `GET /api/honcho/v2/workspaces`
+- `POST /api/honcho/v3/workspaces/{workspaceId}/sessions/{sessionId}`
+- `PATCH /api/honcho/v3/workspaces/{workspaceId}/peers/{peerId}`
 
 ## Collection normalization
 
