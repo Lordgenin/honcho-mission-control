@@ -89,6 +89,7 @@ test('getHonchoSnapshot reads v3 workspace-scoped lists and derives session mess
   process.env.HONCHO_BASE_URL = 'http://honcho.example';
   process.env.HONCHO_WORKSPACE_ID = 'workspace-1';
   process.env.USE_DEMO_DATA = 'false';
+  process.env.ALLOW_LIVE_PUBLIC_DATA = 'true';
   globalThis.fetch = async (url, init) => {
     requested.push({ path: new URL(String(url)).pathname, method: init?.method });
     const path = new URL(String(url)).pathname;

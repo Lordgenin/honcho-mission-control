@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeV3Session, normalizeV3Message, getPerformanceMetricConfig } from '../lib/data-utils.js';
+import { normalizeV3Session, normalizeV3Message, getPerformanceMetricConfig, sanitizePublicText } from '../lib/data-utils.js';
 import { isAllowedProxyPath, isReadOnlyPostPath } from '../lib/proxy-policy.js';
+import { getHonchoSnapshot } from '../lib/honcho-client.js';
 
 test('normalizeV3Session maps Honcho v3 active state and derived message counts', () => {
   const session = normalizeV3Session(
@@ -47,4 +48,72 @@ test('performance metric config refuses to label queue/demo values as live laten
     unit: 'work units'
   });
   assert.equal(getPerformanceMetricConfig([{ label: 'now', latency_ms: 42 }]).label, 'Demo latency (ms)');
+});
+
+test('sanitizePublicText redacts private env labels, local origins, paths, and token shaped strings', () => {
+  const unsafe = 'Set HONCHO_BASE_URL=http://192.168.20.14:8000 and HONCHO_API_KEY=sk-1234567890abcdefghijklmnopqrstuvwx in /root/.hermes/config.yaml for the operator note.';
+  const sanitized = sanitizePublicText(unsafe);
+
+  assert.equal(sanitized.includes('HONCHO_BASE_URL'), false);
+  assert.equal(sanitized.includes('HONCHO_API_KEY'), false);
+  assert.equal(sanitized.includes('192.168.'), false);
+  assert.equal(sanitized.includes('/root/.hermes'), false);
+  assert.equal(sanitized.includes('sk-1234567890abcdefghijklmnopqrstuvwx'), false);
+});
+
+test('getHonchoSnapshot defaults public runtime to demo unless live data is explicitly allowed', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  let fetchCalled = false;
+  process.env.HONCHO_BASE_URL = 'http://honcho.example';
+  process.env.HONCHO_WORKSPACE_ID = 'agent-company';
+  process.env.USE_DEMO_DATA = 'false';
+  delete process.env.ALLOW_LIVE_PUBLIC_DATA;
+  globalThis.fetch = async () => { fetchCalled = true; throw new Error('live fetch should be disabled by default'); };
+
+  try {
+    const snapshot = await getHonchoSnapshot();
+    const serialized = JSON.stringify(snapshot);
+    assert.equal(snapshot.source, 'demo');
+    assert.equal(snapshot.env.liveDataAllowed, false);
+    assert.equal(fetchCalled, false);
+    assert.equal(serialized.includes('agent-company'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
+});
+
+test('getHonchoSnapshot sanitizes explicitly allowed live memory before public rendering', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  process.env.HONCHO_BASE_URL = 'http://honcho.example';
+  process.env.HONCHO_WORKSPACE_ID = 'workspace-1';
+  process.env.USE_DEMO_DATA = 'false';
+  process.env.ALLOW_LIVE_PUBLIC_DATA = 'true';
+  globalThis.fetch = async (url) => {
+    const path = new URL(String(url)).pathname;
+    const payloads = {
+      '/v3/workspaces/workspace-1/peers/list': { peers: [{ id: 'peer-1', metadata: { current_goal: 'inspect /root/.hermes/config.yaml' } }] },
+      '/v3/workspaces/workspace-1/sessions/list': { sessions: [{ id: 'session-1', is_active: true }] },
+      '/v3/workspaces/workspace-1/conclusions/list': { conclusions: [{ id: 'c1', text: 'HONCHO_BASE_URL=http://10.0.0.8:8000' }] },
+      '/v3/workspaces/workspace-1/sessions/session-1/messages/list': { messages: [{ id: 'message-1', content: 'Bearer abcdef1234567890abcdef1234567890abc and HONCHO_API_KEY=secret in /home/user/.env' }] }
+    };
+    return new Response(JSON.stringify(payloads[path] || {}), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const snapshot = await getHonchoSnapshot();
+    const serialized = JSON.stringify(snapshot);
+    assert.equal(snapshot.source, 'live');
+    assert.equal(serialized.includes('HONCHO_BASE_URL'), false);
+    assert.equal(serialized.includes('HONCHO_API_KEY'), false);
+    assert.equal(serialized.includes('10.0.0.8'), false);
+    assert.equal(serialized.includes('/root/.hermes'), false);
+    assert.equal(serialized.includes('/home/user/.env'), false);
+    assert.equal(serialized.includes('abcdef1234567890abcdef1234567890abc'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
 });
