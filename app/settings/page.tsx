@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import { Shell } from '../../components/shell';
 import { SettingsView } from '../../components/views';
 import { getPublicDashboardEnv } from '../../lib/env.js';

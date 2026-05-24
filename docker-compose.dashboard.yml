@@ -8,5 +8,6 @@ services:
       HONCHO_WORKSPACE_ID: "${HONCHO_WORKSPACE_ID:-example-workspace}"
       ENABLE_MUTATIONS: "${ENABLE_MUTATIONS:-false}"
       USE_DEMO_DATA: "${USE_DEMO_DATA:-false}"
+      ALLOW_LIVE_PUBLIC_DATA: "${ALLOW_LIVE_PUBLIC_DATA:-false}"
       NEXT_PUBLIC_DASHBOARD_NAME: "${NEXT_PUBLIC_DASHBOARD_NAME:-Honcho Mission Control}"
     restart: unless-stopped
