@@ -7,7 +7,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
   const { path = [] } = await context.params;
   const normalizedPath = path.map((part) => String(part || '').trim()).filter(Boolean);
   const legacyReadOnlyList = request.method === 'POST' && ['list', 'search'].includes(normalizedPath[normalizedPath.length - 1] || '');
-  if (!isAllowedProxyPath(path)) return NextResponse.json({ ok: false, error: 'unsupported-proxy-path', message: 'Only Honcho v3 API paths are proxied.' }, { status: legacyReadOnlyList ? 200 : 404 });
+  const unsupportedStatus = legacyReadOnlyList ? 200 : (MUTATING.has(request.method) ? 403 : 404);
+  if (!isAllowedProxyPath(path)) return NextResponse.json({ ok: false, error: 'unsupported-proxy-path', message: 'Only Honcho v3 API paths are proxied.' }, { status: unsupportedStatus });
   const readOnlyPost = request.method === 'POST' && isReadOnlyPostPath(path);
   if (MUTATING.has(request.method) && !readOnlyPost && !env.ENABLE_MUTATIONS) return NextResponse.json({ ok: false, error: 'mutations-disabled', message: 'Set ENABLE_MUTATIONS=true to enable write operations.' }, { status: 403 });
   const base = env.HONCHO_BASE_URL.endsWith('/') ? env.HONCHO_BASE_URL : env.HONCHO_BASE_URL + '/';
