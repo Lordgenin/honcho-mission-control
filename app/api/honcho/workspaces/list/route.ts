@@ -7,6 +7,6 @@ export function POST() {
       error: 'unsupported-proxy-path',
       message: 'Use the Honcho v3 read-only list endpoint instead.'
     },
-    { status: 403 }
+    { status: 200 }
   );
 }
