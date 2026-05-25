@@ -178,3 +178,49 @@ test('getKanbanRuntimeSnapshot reports wrong or missing DB diagnostics without r
   assert.match(snapshot.reason, /Kanban runtime unavailable/);
   assert.equal(JSON.stringify(snapshot).includes('/private/missing.db'), false);
 });
+
+test('summarizeKanbanRuntimeRows exposes safe freshness metadata for multiple active assignees', () => {
+  const runtime = summarizeKanbanRuntimeRows({
+    generatedAt,
+    source: 'hermes-kanban:container-mounted-db',
+    sources: [{ label: 'container-mounted-db', state: 'available', task_count: 2, error: '' }],
+    tasks: [
+      { id: 't_breach_live', title: 'Verify live dashboard freshness', assignee: 'breach', status: 'running', created_at: 1779709700, started_at: 1779709800 },
+      { id: 't_jarvis_live', title: 'Fix agents runtime visibility', assignee: 'jarvis', status: 'running', created_at: 1779709600, started_at: 1779709700 }
+    ],
+    runs: [
+      { task_id: 't_breach_live', profile: 'breach', status: 'running', last_heartbeat_at: 1779709980, started_at: 1779709800 },
+      { task_id: 't_jarvis_live', profile: 'jarvis', status: 'running', last_heartbeat_at: 1779709920, started_at: 1779709700 }
+    ],
+    events: [
+      { task_id: 't_breach_live', kind: 'heartbeat', created_at: 1779709980 },
+      { task_id: 't_jarvis_live', kind: 'spawned', created_at: 1779709720 }
+    ]
+  });
+
+  const byProfile = new Map(runtime.agents.map((agent) => [agent.profile, agent]));
+  assert.equal(byProfile.get('breach').assigned_task, 't_breach_live');
+  assert.equal(byProfile.get('jarvis').assigned_task, 't_jarvis_live');
+  assert.equal(runtime.freshness.latest_task_at, '2026-05-25T11:50:00.000Z');
+  assert.equal(runtime.freshness.latest_run_at, '2026-05-25T11:53:00.000Z');
+  assert.equal(runtime.freshness.latest_event_at, '2026-05-25T11:53:00.000Z');
+  assert.equal(runtime.freshness.active_assignee_count, 2);
+  assert.equal(runtime.freshness.running_task_count, 2);
+});
+
+test('getKanbanRuntimeSnapshot attaches per-source safe freshness metadata without raw DB paths', () => {
+  const snapshot = getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: { HERMES_KANBAN_DBS: '/private/agent-company.db' },
+    execFileSyncImpl: () => JSON.stringify({
+      tasks: [{ id: 't_breach_live', title: 'Verify live dashboard freshness', assignee: 'breach', status: 'running', created_at: 1779709700, started_at: 1779709800 }],
+      runs: [{ task_id: 't_breach_live', profile: 'breach', status: 'running', last_heartbeat_at: 1779709980, started_at: 1779709800 }],
+      events: [{ task_id: 't_breach_live', kind: 'heartbeat', created_at: 1779709980 }]
+    })
+  });
+
+  assert.equal(snapshot.sources[0].latest_task_at, '2026-05-25T11:50:00.000Z');
+  assert.equal(snapshot.sources[0].latest_run_at, '2026-05-25T11:53:00.000Z');
+  assert.equal(snapshot.sources[0].latest_event_at, '2026-05-25T11:53:00.000Z');
+  assert.equal(JSON.stringify(snapshot).includes('/private/agent-company.db'), false);
+});
