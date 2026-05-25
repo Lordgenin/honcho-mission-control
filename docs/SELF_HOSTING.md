@@ -82,7 +82,8 @@ Recommended first checks:
 2. `/dashboard` - verify API health and recent memory activity.
 3. `/workspaces` - verify the expected workspace is visible.
 4. `/agents` - verify Hermes agents are discovered.
-5. `/context` - inspect normalized data if anything looks wrong.
+5. `/performance` - inspect dashboard-to-Honcho request telemetry, or confirm it is unknown/unavailable.
+6. `/context` - inspect normalized data if anything looks wrong.
 
 ## Production-style Node run
 
@@ -133,6 +134,14 @@ Useful optional metadata:
   "capabilities": ["planning", "qa"]
 }
 ```
+
+If fields are absent, the UI falls back to neutral labels. Heartbeat and activity wording is only shown when Honcho returns `heartbeat`, `last_seen`, `updated_at`, or `created_at`; otherwise the card should say activity is unknown rather than implying monitoring data exists.
+
+## Performance telemetry expectations
+
+The Performance page summarizes telemetry from the dashboard's server-side Honcho requests: health state, latency samples, failures, slow endpoints, freshness, and trend samples when present. Use it to debug the dashboard connection to Honcho.
+
+Do not treat this as full Honcho service observability. A fresh process, failed live connection, or deployment without retained time-series samples may show unknown or empty trend states. That is expected and safer than inferring service metrics from unrelated counts.
 
 ## Troubleshooting
 

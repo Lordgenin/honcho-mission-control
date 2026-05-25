@@ -3,7 +3,7 @@
 Core files:
 
 - `lib/env.js` parses runtime environment, keeps `HONCHO_API_KEY` non-enumerable, and exposes only client-safe runtime status through `getPublicDashboardEnv`.
-- `lib/honcho-client.js` fetches server-side collections, handles timeout/offline/auth/malformed JSON states, and falls back to partial live snapshots when some endpoints fail.
+- `lib/honcho-client.js` fetches server-side collections, handles timeout/offline/auth/malformed JSON states, records dashboard-to-Honcho request telemetry, and falls back to partial live snapshots when some endpoints fail.
 - `app/api/honcho/[...path]/route.ts` is the server-side proxy that avoids browser CORS and keeps credentials out of client bundles.
 
 ## Environment defaults
@@ -44,3 +44,9 @@ Examples blocked with default settings:
 ## Collection normalization
 
 The client accepts arrays directly and common envelopes: `items`, `results`, `data`, `workspaces`, `peers`, `sessions`, `messages`, and `conclusions`.
+
+## Partial live and telemetry behavior
+
+When at least one live request fails but other requests succeed, the public snapshot uses `source: "live-partial"` and includes sanitized failure metadata. UI copy should describe that state as degraded rather than as an empty workspace.
+
+The `performance` payload is derived from the dashboard's own server-side fetch records. It can summarize request health, latency samples, errors, slow endpoints, freshness, and trend samples when available. It is not a general Honcho metrics source; unknown or empty telemetry states are valid when no request records exist.

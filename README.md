@@ -1,24 +1,27 @@
 # Honcho Mission Control
 
-Honcho Mission Control is a public, self-hostable Next.js dashboard for Honcho memory workspaces and Hermes-style AI agent operations. It gives operators a safe read-only view of workspaces, peers, sessions, messages, conclusions, API health, and discovered agents without exposing the Honcho API key to browser code.
+Honcho Mission Control is a public, self-hostable Next.js dashboard for Honcho memory workspaces and Hermes-style AI agent operations. It gives operators a safe read-only view of workspaces, peers, sessions, messages, conclusions, API health, discovered agents, and dashboard-to-Honcho request telemetry without exposing the Honcho API key to browser code.
 
 Use it when you want to answer questions such as:
 
 - Is my Honcho service reachable from the dashboard?
 - Which workspaces, peers, sessions, messages, and conclusions are visible?
 - Are Hermes agents being discovered from Honcho peers?
-- Is the dashboard running in demo, live, read-only, or mutation-enabled mode?
+- Is the dashboard running in demo, live, live-partial, read-only, or mutation-enabled mode?
 - What should I check when data or agents do not appear?
+
+The repo is intended to be useful for two audiences: people evaluating the interface with bundled demo data, and operators connecting it to their own Honcho deployment. Public examples use placeholders only; keep private hosts, workspace ids, API keys, and deployment notes in local environment files or private runbooks.
 
 ## What the dashboard does
 
 - Provides a production-oriented Next.js App Router UI for Honcho memory operations.
 - Reads Honcho data through a server-side `/api/honcho/[...path]` proxy so `HONCHO_API_KEY` stays on the server.
 - Defaults to read-only mode. Mutating proxy requests return `403` unless `ENABLE_MUTATIONS=true`.
-- Supports demo mode with sample workspaces, peers, sessions, messages, conclusions, webhooks, performance samples, and Hermes agents.
+- Supports demo mode with sample workspaces, peers, sessions, messages, conclusions, webhooks, request telemetry samples, and Hermes-style agents.
 - Supports live mode against a configured Honcho service and workspace.
 - Discovers agents from Honcho peers using explicit agent metadata and a Hermes peer-id fallback for live peers such as `hermes` and `hermes-*`.
-- Labels runtime state clearly in the shell and dashboard: demo/live source, API health, read-only/mutation posture, workspace scope, and discovered agent counts.
+- Labels runtime state clearly in the shell and dashboard: demo/live/live-partial source, API health, read-only/mutation posture, workspace scope, and discovered agent counts.
+- Shows degraded states explicitly instead of treating upstream failures as empty datasets.
 
 ## Prerequisites
 
@@ -40,6 +43,15 @@ USE_DEMO_DATA=true npm run dev
 Open http://localhost:3000.
 
 The shell should identify the source as demo data. The Agents page should show sample agents so you can understand the intended layout before wiring a live workspace.
+
+## Operator quickstart
+
+1. Start with demo mode and open `/`, `/dashboard`, and `/agents` to understand the UI language.
+2. Switch `USE_DEMO_DATA=false`, set `HONCHO_BASE_URL`, and optionally set `HONCHO_WORKSPACE_ID` for a scoped live run.
+3. Open `/settings` first. Confirm source, workspace scope, API-key presence, and read-only/mutation posture.
+4. Open `/dashboard`. Confirm API health, generated timestamp, live/live-partial state, and high-level counts.
+5. Open `/agents`. Confirm peers are discovered through explicit agent metadata or the `hermes` / `hermes-*` fallback.
+6. If anything looks wrong, open `/context` to inspect the normalized snapshot the UI received.
 
 ## Quick start: live Honcho mode
 
@@ -101,9 +113,11 @@ The landing page explains the purpose of the dashboard and highlights operationa
 
 The Dashboard view summarizes live system state: data source, API health, generated timestamp, read-only/mutation posture, workspace scope, and recent memory activity. It is intended as the first place to check whether the app is connected and whether returned data looks plausible.
 
+If one or more upstream reads fail while other data loads, the dashboard should identify a degraded or `live-partial` state instead of silently inventing missing data.
+
 ### Agents (`/agents`)
 
-The Agents view shows Hermes-style agents discovered from Honcho peers. Agent cards show status, role/team, current goal, assigned task, heartbeat/last-seen style fields when present, capability chips, and whether the agent was inferred from fallback discovery when metadata is sparse.
+The Agents view shows Hermes-style agents discovered from Honcho peers. Agent cards show status, role/team, current goal, assigned task, heartbeat/last-seen style fields only when Honcho returned them, capability chips, and whether the agent was inferred from fallback discovery when metadata is sparse.
 
 Expected live behavior:
 
@@ -123,6 +137,10 @@ The Context view presents a combined JSON-oriented snapshot for operators: works
 ### API playground (`/api-playground`)
 
 The API playground documents safe read-only proxy paths. Browser requests target the Next.js server proxy rather than Honcho directly.
+
+### Performance (`/performance`)
+
+The Performance view summarizes telemetry collected from the dashboard's own server-side calls to Honcho: request health, latency samples, failures, slow endpoints, freshness, and trend samples when available. It is not a full Honcho observability system, and it should show unknown/unavailable states when no request telemetry has been captured.
 
 ### Settings (`/settings`)
 
@@ -144,6 +162,8 @@ Honcho peer records vary by deployment. Mission Control supports both explicit m
 Metadata fields used in cards when available include `role`, `team`, `status`, `heartbeat`, `last_seen`, `current_goal`, `assigned_task`, and `capabilities`.
 
 If these fields are absent, the UI still renders fallback labels rather than hiding the peer.
+
+Activity wording is intentionally conservative. The UI says heartbeat or last activity only when the peer metadata includes `heartbeat`, `last_seen`, `updated_at`, or `created_at`; otherwise it says activity is unknown.
 
 ## Troubleshooting
 
@@ -167,6 +187,10 @@ curl "$HONCHO_BASE_URL/health"
 
 Then check that the configured workspace id exists and that any required API key is present in the server environment.
 
+### Dashboard says live-partial or degraded
+
+`live-partial` means at least one live Honcho request failed while other requests returned usable data. Open `/settings` and `/api-playground`, check the server logs, and verify the Honcho base URL, workspace id, API key, route support, and network path from the machine running Next.js.
+
 ### Agents do not appear
 
 1. Open `/agents` and check whether the main panel says peer discovery is degraded. That state means the peers list request failed; it is different from a valid empty workspace and includes the failed path, status, and error plus retry guidance.
@@ -187,6 +211,10 @@ This is expected. The dashboard is read-only by default. Set `ENABLE_MUTATIONS=t
 ### Counts look lower than expected
 
 Check `HONCHO_WORKSPACE_ID`. When set, the dashboard scopes live reads to that workspace. Clear it only if your deployment and API paths support broad multi-workspace reads safely.
+
+### Performance looks empty or unknown
+
+The Performance page reports dashboard-to-Honcho request telemetry collected during server-side reads. A fresh process, demo-disabled run with no successful requests, or deployment without retained time-series samples can show unknown or empty trend states. Do not interpret those as Honcho service-level metrics unless you have wired a verified metrics source.
 
 ## Generic remote deploy helper
 

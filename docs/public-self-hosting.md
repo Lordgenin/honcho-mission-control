@@ -85,9 +85,9 @@ When documenting or debugging proxy calls publicly, use placeholders such as `{w
 
 ## Demo data and metrics honesty
 
-Demo mode is for UI exploration only. It may include realistic-looking sessions, messages, webhooks, and performance examples, but it is not live telemetry.
+Demo mode is for UI exploration only. It may include realistic-looking sessions, messages, webhooks, and request telemetry examples, but it is not live telemetry.
 
-Live mode should only display traceable live data. The Performance page should not claim real latency, request-rate, or error-rate telemetry unless those metrics are actually collected from a verified source. If the current Honcho API does not expose live performance telemetry, the page should show an empty or unavailable state instead of inferring latency or errors from unrelated counts.
+Live mode currently reports telemetry collected from the dashboard's own server-side requests to Honcho: request success/failure, latency samples, slow endpoints, freshness, and optional trend samples. It is useful for debugging the dashboard connection, but it is not a full Honcho service observability layer. Do not claim service-level latency, request-rate, or error-rate metrics unless you wire a verified metrics source and label it clearly. If no request telemetry has been captured, the Performance page should show unknown, empty, or unavailable states instead of inventing values.
 
 ## Troubleshooting
 
