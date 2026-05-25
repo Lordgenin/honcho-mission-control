@@ -14,5 +14,5 @@ services:
       HERMES_KANBAN_DATABASE: "${HERMES_KANBAN_DATABASE:-/data/hermes/kanban.db}"
       NEXT_PUBLIC_DASHBOARD_NAME: "${NEXT_PUBLIC_DASHBOARD_NAME:-Honcho Mission Control}"
     volumes:
-      - "${HERMES_KANBAN_HOST_DB:-/root/.hermes/kanban/boards/agent-company/kanban.db}:/data/hermes/kanban.db:ro"
+      - "${HERMES_KANBAN_SNAPSHOT_HOST_DB:-/home/dashboard-deploy/incoming/honcho-mission-control/runtime/kanban.db}:/data/hermes/kanban.db:ro"
     restart: unless-stopped

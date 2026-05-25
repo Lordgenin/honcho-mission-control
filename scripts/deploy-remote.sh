@@ -27,6 +27,8 @@ REV="$(git -C "$LOCAL_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ARCHIVE="/tmp/honcho-mission-control-${REV}-${STAMP}.tar.gz"
 REMOTE_ARCHIVE="/tmp/honcho-mission-control-${REV}-${STAMP}.tar.gz"
+LOCAL_KANBAN_DB="${LOCAL_KANBAN_DB:-/root/.hermes/kanban/boards/agent-company/kanban.db}"
+REMOTE_KANBAN_DB=""
 SSH=(ssh -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$REMOTE_USER@$REMOTE_HOST")
 SCP=(scp -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 
@@ -47,8 +49,16 @@ tar \
 "${SCP[@]}" "$ARCHIVE" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_ARCHIVE"
 rm -f "$ARCHIVE"
 
+if [ -r "$LOCAL_KANBAN_DB" ]; then
+  REMOTE_KANBAN_DB="/tmp/honcho-kanban-${REV}-${STAMP}.db"
+  echo "Uploading sanitized Kanban DB snapshot for read-only dashboard mount..."
+  "${SCP[@]}" "$LOCAL_KANBAN_DB" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_KANBAN_DB"
+else
+  echo "Local Kanban DB snapshot not readable at configured path; deploy will rely on remote host mount." >&2
+fi
+
 echo "Installing source into incoming deploy directory with safe public defaults..."
-"${SSH[@]}" "REMOTE_APP='$REMOTE_APP' REMOTE_INCOMING='$REMOTE_INCOMING' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' REV='$REV' bash -s" <<'REMOTE'
+"${SSH[@]}" "REMOTE_APP='$REMOTE_APP' REMOTE_INCOMING='$REMOTE_INCOMING' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' REMOTE_KANBAN_DB='$REMOTE_KANBAN_DB' REV='$REV' bash -s" <<'REMOTE'
 set -Eeuo pipefail
 mkdir -p "$REMOTE_INCOMING"
 TMPDIR="/tmp/honcho-mission-control-src-$REV-$$"
@@ -93,7 +103,15 @@ set_default_kv ALLOW_LIVE_PUBLIC_DATA false "$TMPDIR/.env"
 set_default_kv HERMES_KANBAN_DBS /data/hermes/kanban.db "$TMPDIR/.env"
 set_default_kv HERMES_KANBAN_DB /data/hermes/kanban.db "$TMPDIR/.env"
 set_default_kv HERMES_KANBAN_DATABASE /data/hermes/kanban.db "$TMPDIR/.env"
-set_default_kv HERMES_KANBAN_HOST_DB /root/.hermes/kanban/boards/agent-company/kanban.db "$TMPDIR/.env"
+if [ -n "$REMOTE_KANBAN_DB" ] && [ -r "$REMOTE_KANBAN_DB" ]; then
+  mkdir -p "$TMPDIR/runtime"
+  cp "$REMOTE_KANBAN_DB" "$TMPDIR/runtime/kanban.db"
+  rm -f "$REMOTE_KANBAN_DB"
+  set_kv HERMES_KANBAN_HOST_DB "$REMOTE_INCOMING/runtime/kanban.db" "$TMPDIR/.env"
+  set_kv HERMES_KANBAN_SNAPSHOT_HOST_DB "$REMOTE_INCOMING/runtime/kanban.db" "$TMPDIR/.env"
+else
+  set_default_kv HERMES_KANBAN_HOST_DB /root/.hermes/kanban/boards/agent-company/kanban.db "$TMPDIR/.env"
+fi
 find "$REMOTE_INCOMING" -mindepth 1 ! -name '.env' -exec rm -rf {} +
 cp -a "$TMPDIR"/. "$REMOTE_INCOMING"/
 printf 'main@%s\n' "$REV" > "$REMOTE_INCOMING/.source-revision"

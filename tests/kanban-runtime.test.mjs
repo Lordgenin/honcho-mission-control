@@ -105,6 +105,28 @@ test('getKanbanRuntimeSnapshot reads configured DB list before legacy defaults a
   assert.equal(JSON.stringify(snapshot).includes('/private/'), false);
 });
 
+test('production Docker runner includes python3 for sanitized Kanban SQLite reads', async () => {
+  const source = await import('node:fs/promises').then((fs) => fs.readFile(new URL('../Dockerfile', import.meta.url), 'utf8'));
+  assert.match(source, /FROM node:22-alpine AS runner[\s\S]*apk add --no-cache python3/);
+});
+
+test('getKanbanRuntimeSnapshot labels single container-mounted DB consistently with health diagnostics', () => {
+  const snapshot = getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: { HERMES_KANBAN_DBS: '/data/hermes/kanban.db' },
+    execFileSyncImpl: () => JSON.stringify({
+      tasks: [{ id: 't_container', title: 'Container mounted task', assignee: 'jarvis', status: 'ready', created_at: 1779709900 }],
+      runs: [],
+      events: []
+    })
+  });
+
+  assert.equal(snapshot.available, true);
+  assert.equal(snapshot.source, 'hermes-kanban:container-mounted-db');
+  assert.equal(snapshot.sources[0].label, 'container-mounted-db');
+  assert.equal(JSON.stringify(snapshot).includes('/data/hermes/kanban.db'), false);
+});
+
 test('getKanbanRuntimeSnapshot reports wrong or missing DB diagnostics without raw paths', () => {
   const snapshot = getKanbanRuntimeSnapshot({
     generatedAt,

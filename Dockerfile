@@ -10,6 +10,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 FROM node:22-alpine AS runner
 WORKDIR /app
+RUN apk add --no-cache python3
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static

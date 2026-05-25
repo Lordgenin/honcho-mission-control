@@ -1,8 +1,35 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { normalizeV3Session, normalizeV3Message, getPerformanceMetricConfig, sanitizePublicText, summarizePerformanceTelemetry } from '../lib/data-utils.js';
 import { isAllowedProxyPath, isReadOnlyPostPath } from '../lib/proxy-policy.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
+
+function createKanbanFixtureDb() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kanban-fixture-'));
+  const dbPath = path.join(dir, 'kanban.db');
+  execFileSync('python3', ['-c', String.raw`
+import sqlite3, sys
+db = sys.argv[1]
+con = sqlite3.connect(db)
+con.executescript('''
+create table tasks (id text primary key, title text, assignee text, status text, created_at integer, started_at integer, completed_at integer);
+create table task_runs (task_id text, profile text, status text, last_heartbeat_at integer, started_at integer, ended_at integer);
+create table task_events (task_id text, kind text, created_at integer);
+insert into tasks values ('t_fixture_ready', 'Fixture ready canary', 'jarvis', 'ready', 1779709900, null, null);
+insert into tasks values ('t_fixture_blocked', 'Fixture blocked canary', 'breach', 'blocked', 1779709950, null, null);
+insert into tasks values ('t_fixture_running', 'Fixture running canary', 'forge', 'running', 1779709800, 1779709800, null);
+insert into task_runs values ('t_fixture_running', 'forge', 'running', 1779709980, 1779709800, null);
+insert into task_events values ('t_fixture_running', 'heartbeat', 1779709980);
+''')
+con.commit()
+con.close()
+`, dbPath]);
+  return { dir, dbPath };
+}
 
 test('normalizeV3Session maps Honcho v3 active state and derived message counts', () => {
   const session = normalizeV3Session(
@@ -117,6 +144,7 @@ test('getHonchoSnapshot defaults public runtime to demo unless live data is expl
   process.env.HONCHO_BASE_URL = 'http://honcho.example';
   process.env.HONCHO_WORKSPACE_ID = 'agent-company';
   process.env.USE_DEMO_DATA = 'false';
+  process.env.HERMES_KANBAN_DBS = '/private/missing-kanban.db';
   delete process.env.ALLOW_LIVE_PUBLIC_DATA;
   globalThis.fetch = async () => { fetchCalled = true; throw new Error('live fetch should be disabled by default'); };
 
@@ -130,6 +158,41 @@ test('getHonchoSnapshot defaults public runtime to demo unless live data is expl
   } finally {
     globalThis.fetch = originalFetch;
     process.env = originalEnv;
+  }
+});
+
+test('getHonchoSnapshot attaches sanitized Kanban runtime in protected public mode without live Honcho fetches', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  const fixture = createKanbanFixtureDb();
+  let fetchCalled = false;
+  process.env.HONCHO_BASE_URL = 'http://honcho.example';
+  process.env.HONCHO_WORKSPACE_ID = 'agent-company';
+  process.env.USE_DEMO_DATA = 'false';
+  process.env.ALLOW_LIVE_PUBLIC_DATA = 'false';
+  process.env.HERMES_KANBAN_DBS = fixture.dbPath;
+  globalThis.fetch = async () => { fetchCalled = true; throw new Error('live Honcho fetch should stay disabled'); };
+
+  try {
+    const snapshot = await getHonchoSnapshot();
+    const agents = snapshot.kanban?.agents || [];
+    const discovered = agents.map((agent) => agent.assigned_task).sort();
+    const serialized = JSON.stringify(snapshot);
+
+    assert.equal(snapshot.source, 'demo');
+    assert.equal(fetchCalled, false);
+    assert.equal(snapshot.env.liveDataAllowed, false);
+    assert.equal(snapshot.kanban.available, true);
+    assert.equal(snapshot.kanban.state, 'available');
+    assert.equal(snapshot.kanban.freshness.state, 'live');
+    assert.equal(snapshot.kanban.source, 'hermes-kanban:configured-db-1');
+    assert.deepEqual(discovered, ['t_fixture_blocked', 't_fixture_ready', 't_fixture_running']);
+    assert.equal(serialized.includes(fixture.dbPath), false);
+    assert.equal(serialized.includes('/tmp/kanban-fixture'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
   }
 });
 
