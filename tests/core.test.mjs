@@ -93,7 +93,8 @@ test('getDemoSnapshot includes Hermes-like operational data and clear demo mode'
   assert.equal(snapshot.mode, 'demo');
   assert.ok(snapshot.workspaces.length >= 2);
   assert.ok(snapshot.peers.some((peer) => peer.metadata?.type === 'agent'));
-  assert.ok(snapshot.performance.some((point) => typeof point.latency_ms === 'number'));
+  assert.ok(snapshot.performance.timeseries.some((point) => typeof point.latency_ms === 'number'));
+  assert.equal(snapshot.performance.health.state, 'degraded');
 });
 
 test('getHonchoSnapshot reads v3 workspace-scoped lists and derives session message counts', async () => {

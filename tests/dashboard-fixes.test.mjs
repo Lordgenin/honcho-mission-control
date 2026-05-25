@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeV3Session, normalizeV3Message, getPerformanceMetricConfig, sanitizePublicText } from '../lib/data-utils.js';
+import { normalizeV3Session, normalizeV3Message, getPerformanceMetricConfig, sanitizePublicText, summarizePerformanceTelemetry } from '../lib/data-utils.js';
 import { isAllowedProxyPath, isReadOnlyPostPath } from '../lib/proxy-policy.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 
@@ -59,6 +59,55 @@ test('sanitizePublicText redacts private env labels, local origins, paths, and t
   assert.equal(sanitized.includes('192.168.'), false);
   assert.equal(sanitized.includes('/root/.hermes'), false);
   assert.equal(sanitized.includes('sk-1234567890abcdefghijklmnopqrstuvwx'), false);
+});
+
+test('summarizePerformanceTelemetry exposes freshness, request, latency, error, and degraded states', () => {
+  const summary = summarizePerformanceTelemetry({
+    generatedAt: '2026-05-25T00:00:10.000Z',
+    source: 'live-partial',
+    records: [
+      { path: '/v3/workspaces/workspace-1/peers/list', ok: true, status: 200, latency_ms: 40, observed_at: '2026-05-25T00:00:01.000Z' },
+      { path: '/v3/workspaces/workspace-1/sessions/list', ok: false, status: 502, error: 'timeout', latency_ms: 10000, observed_at: '2026-05-25T00:00:02.000Z' }
+    ]
+  });
+
+  assert.equal(summary.health.state, 'degraded');
+  assert.equal(summary.freshness.state, 'live');
+  assert.equal(summary.requests.total, 2);
+  assert.equal(summary.errors.total, 1);
+  assert.equal(summary.latency.avg_ms, 5020);
+  assert.equal(summary.latency.max_ms, 10000);
+  assert.equal(summary.slow_endpoints[0].path, '/v3/workspaces/workspace-1/sessions/list');
+});
+
+test('getHonchoSnapshot attaches request telemetry when live fetches partially fail', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  process.env.HONCHO_BASE_URL = 'http://honcho.example';
+  process.env.HONCHO_WORKSPACE_ID = 'workspace-1';
+  process.env.USE_DEMO_DATA = 'false';
+  process.env.ALLOW_LIVE_PUBLIC_DATA = 'true';
+  globalThis.fetch = async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith('/sessions/list')) return new Response(JSON.stringify({ error: 'temporary' }), { status: 503, headers: { 'content-type': 'application/json' } });
+    const payloads = {
+      '/v3/workspaces/workspace-1/peers/list': { peers: [{ id: 'peer-1' }] },
+      '/v3/workspaces/workspace-1/conclusions/list': { conclusions: [] }
+    };
+    return new Response(JSON.stringify(payloads[path] || { messages: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const snapshot = await getHonchoSnapshot();
+    assert.equal(snapshot.source, 'live-partial');
+    assert.equal(snapshot.performance.health.state, 'degraded');
+    assert.equal(snapshot.performance.requests.failed, 1);
+    assert.equal(snapshot.performance.errors.recent[0].path, '/v3/workspaces/workspace-1/sessions/list');
+    assert.ok(snapshot.performance.freshness.generated_at);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
 });
 
 test('getHonchoSnapshot defaults public runtime to demo unless live data is explicitly allowed', async () => {
