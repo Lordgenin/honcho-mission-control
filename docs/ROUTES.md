@@ -6,7 +6,7 @@ Honcho Mission Control uses Next.js App Router pages. Routes are safe to browse 
 
 - `/` - Landing page, dashboard value proposition, first-run orientation, and guardrail summary.
 - `/dashboard` - System status summary: source, API health, generated timestamp, read-only/mutation posture, workspace scope, agent counts, recent memory activity, and degraded/live-partial connection state.
-- `/agents` - Hermes-style agents discovered from Honcho peers. Supports explicit agent metadata and `hermes` / `hermes-*` peer-id fallback.
+- `/agents` - Hermes-style agents discovered from Kanban runtime first, explicit Honcho peer metadata second, and `hermes` / `hermes-*` peer-id fallback last. Current goal, task, heartbeat, and last activity show per-field source badges.
 - `/workspaces` - Searchable workspace list.
 - `/workspaces/[workspaceId]` - Workspace metrics and links to peers and sessions.
 - `/workspaces/[workspaceId]/peers` - Peers in a workspace.
@@ -32,7 +32,8 @@ The UI distinguishes these cases:
 - Empty dataset: Honcho returned no rows for that view.
 - Degraded/live-partial: one or more upstream reads failed while other live data loaded; missing data is not inferred.
 - No search results: rows exist, but the current query does not match nested fields.
-- No agents discovered: peers are absent or do not match agent metadata / Hermes peer-id discovery rules.
+- No agents discovered: Kanban runtime, Hermes peer ids, and explicit Honcho agent metadata all returned no agents.
+- Kanban degraded: the server could not read Hermes Kanban runtime; activity/current-goal fields fall back to Honcho enrichment or unknown without exposing raw runtime errors.
 
 ## Useful first-run path
 

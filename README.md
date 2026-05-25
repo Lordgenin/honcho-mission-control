@@ -117,12 +117,14 @@ If one or more upstream reads fail while other data loads, the dashboard should 
 
 ### Agents (`/agents`)
 
-The Agents view shows Hermes-style agents discovered from Honcho peers. Agent cards show status, role/team, current goal, assigned task, heartbeat/last-seen style fields only when Honcho returned them, capability chips, and whether the agent was inferred from fallback discovery when metadata is sparse.
+The Agents view shows Hermes-style agents discovered from the safest available source hierarchy. Current task, current goal, heartbeat, last activity, and active/idle/stale/unknown state prefer Hermes Kanban runtime when the Next.js server can read it. Honcho peer metadata is used only as explicit enrichment, and static Hermes peer/profile discovery is a fallback that stays labeled.
 
 Expected live behavior:
 
-- Peers with metadata such as `type=agent`, `kind=agent`, `role=agent`, or `agent=true` appear as agents.
-- Live Hermes peers with ids such as `hermes` and `hermes-*` also appear even when Honcho returns empty metadata/configuration.
+- Kanban runtime rows produce agent cards for task assignees without exposing raw task bodies, comments, run metadata, heartbeat notes, host paths, private IPs, or secrets.
+- Per-field badges show whether current goal/task/activity came from `kanban-*`, `honcho-peer-enrichment`, or `fallback-not-reported`.
+- Peers with metadata such as `type=agent`, `kind=agent`, `role=agent`, or `agent=true` appear as Honcho-enriched agents.
+- Live Hermes peers with ids such as `hermes` and `hermes-*` also appear even when Honcho returns empty metadata/configuration, but current goal and activity stay unknown unless Kanban or explicit metadata reported them.
 - A normal human/user peer should not be counted as an agent.
 - A healthy live workspace can show a summary like `Discovered agents: 7` from `8` live peers when seven peers are Hermes agents and one peer is the user.
 
@@ -148,7 +150,13 @@ Settings shows runtime posture without printing secrets. The API key is displaye
 
 ## Agent discovery behavior
 
-Honcho peer records vary by deployment. Mission Control supports both explicit metadata and pragmatic Hermes peer-id discovery:
+Honcho peer records vary by deployment. Mission Control now uses this source hierarchy for activity/current-goal semantics:
+
+1. Hermes Kanban runtime, when readable by the server: task assignee, safe task title, task id, task status, run heartbeat timestamp, and event timestamps. The public snapshot does not include task bodies, comments, run metadata, heartbeat notes, host paths, private IPs, or raw errors.
+2. Honcho peer metadata, only as explicit enrichment: `role`, `team`, `status`, `heartbeat`, `last_seen`, `current_goal`, `assigned_task`, and `capabilities`.
+3. Static Hermes peer/profile fallback: `hermes` and `hermes-*` ids are shown as agents, but missing current-goal/activity fields render as `fallback-not-reported`/unknown rather than being inferred.
+
+Agent discovery supports both explicit metadata and pragmatic Hermes peer-id discovery:
 
 1. Explicit metadata discovery:
    - `metadata.type = "agent"`
@@ -163,7 +171,7 @@ Metadata fields used in cards when available include `role`, `team`, `status`, `
 
 If these fields are absent, the UI still renders fallback labels rather than hiding the peer.
 
-Activity wording is intentionally conservative. The UI says heartbeat or last activity only when the peer metadata includes `heartbeat`, `last_seen`, `updated_at`, or `created_at`; otherwise it says activity is unknown.
+Activity wording is intentionally conservative. The UI says heartbeat or last activity only when Kanban provides a safe timestamp or Honcho explicitly returned `heartbeat`, `last_seen`, `updated_at`, or `created_at`; otherwise it says activity is unknown. Kanban `active` means a running task has a fresh heartbeat/activity timestamp, `idle` means queued/blocked work exists without a running worker, `stale` means running work has no fresh signal, `degraded` means the runtime could not be read, and `unknown` means no safe source reported the field.
 
 ## Troubleshooting
 
