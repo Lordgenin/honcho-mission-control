@@ -47,7 +47,7 @@ tar \
 "${SCP[@]}" "$ARCHIVE" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_ARCHIVE"
 rm -f "$ARCHIVE"
 
-echo "Installing source into incoming deploy directory and forcing live mode..."
+echo "Installing source into incoming deploy directory with safe public defaults..."
 "${SSH[@]}" "REMOTE_APP='$REMOTE_APP' REMOTE_INCOMING='$REMOTE_INCOMING' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' REV='$REV' bash -s" <<'REMOTE'
 set -Eeuo pipefail
 mkdir -p "$REMOTE_INCOMING"
@@ -82,8 +82,18 @@ PY
     printf '%s=%s\n' "$key" "$value" >> "$file"
   fi
 }
-set_kv USE_DEMO_DATA false "$TMPDIR/.env"
-set_kv ALLOW_LIVE_PUBLIC_DATA true "$TMPDIR/.env"
+set_default_kv() {
+  key="$1"; value="$2"; file="$3"
+  if ! grep -q "^${key}=" "$file"; then
+    printf '%s=%s\n' "$key" "$value" >> "$file"
+  fi
+}
+set_default_kv USE_DEMO_DATA false "$TMPDIR/.env"
+set_default_kv ALLOW_LIVE_PUBLIC_DATA false "$TMPDIR/.env"
+set_default_kv HERMES_KANBAN_DBS /data/hermes/kanban.db "$TMPDIR/.env"
+set_default_kv HERMES_KANBAN_DB /data/hermes/kanban.db "$TMPDIR/.env"
+set_default_kv HERMES_KANBAN_DATABASE /data/hermes/kanban.db "$TMPDIR/.env"
+set_default_kv HERMES_KANBAN_HOST_DB /root/.hermes/kanban/boards/agent-company/kanban.db "$TMPDIR/.env"
 find "$REMOTE_INCOMING" -mindepth 1 ! -name '.env' -exec rm -rf {} +
 cp -a "$TMPDIR"/. "$REMOTE_INCOMING"/
 printf 'main@%s\n' "$REV" > "$REMOTE_INCOMING/.source-revision"

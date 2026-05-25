@@ -4,6 +4,7 @@ import { getDashboardEnv, getPublicDashboardEnv } from '../lib/env.js';
 import { discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
+import { getHealthPayload } from '../lib/health.js';
 
 test('getDashboardEnv keeps secrets server-side and applies safe defaults', () => {
   const env = getDashboardEnv({});
@@ -239,4 +240,26 @@ test('getHonchoSnapshot reads v3 workspace-scoped lists and derives session mess
     globalThis.fetch = originalFetch;
     process.env = originalEnv;
   }
+});
+
+test('health payload reports safe build, public mode, and container Kanban diagnostics', () => {
+  const payload = getHealthPayload({
+    now: new Date('2026-05-25T00:00:00Z'),
+    envSource: {
+      ALLOW_LIVE_PUBLIC_DATA: 'false',
+      USE_DEMO_DATA: 'false',
+      ENABLE_MUTATIONS: 'false',
+      HERMES_KANBAN_DBS: '/data/hermes/kanban.db',
+      HERMES_KANBAN_DB: '/data/hermes/kanban.db',
+      HERMES_KANBAN_DATABASE: '/data/hermes/kanban.db'
+    }
+  });
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.runtime.public_data_mode, 'protected-default');
+  assert.equal(payload.runtime.live_private_data_requires_server_opt_in, true);
+  assert.equal(payload.kanban.configured, true);
+  assert.equal(payload.kanban.container_mount, '/data/hermes/kanban.db');
+  assert.equal(payload.kanban.source_label, 'container-mounted-db');
+  assert.equal(JSON.stringify(payload).includes('/root/.hermes'), false);
 });
