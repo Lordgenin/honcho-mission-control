@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { discoverAgents } from '../lib/data-utils.js';
 import { buildDegradedKanbanRuntime, getKanbanRuntimeSnapshot, summarizeKanbanRuntimeRows } from '../lib/kanban-runtime.js';
@@ -103,6 +105,22 @@ test('getKanbanRuntimeSnapshot reads configured DB list before legacy defaults a
   assert.equal(snapshot.sources.length, 2);
   assert.equal(snapshot.sources[0].label, 'configured-db-1');
   assert.equal(JSON.stringify(snapshot).includes('/private/'), false);
+});
+
+test('getKanbanRuntimeSnapshot does not use private agent-company board paths without explicit configuration', () => {
+  const calls = [];
+  const snapshot = getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: {},
+    execFileSyncImpl: (_cmd, args) => {
+      calls.push(args.at(-1));
+      throw new Error('missing default DB');
+    }
+  });
+
+  assert.deepEqual(calls, [path.join(os.homedir(), '.hermes', 'kanban.db')]);
+  assert.equal(snapshot.available, false);
+  assert.equal(JSON.stringify(snapshot).includes('agent-company'), false);
 });
 
 test('production Docker runner includes python3 for sanitized Kanban SQLite reads', async () => {

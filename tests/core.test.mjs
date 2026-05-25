@@ -6,11 +6,12 @@ import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 import { getHealthPayload } from '../lib/health.js';
 
-test('getDashboardEnv keeps secrets server-side and applies safe defaults', () => {
+test('getDashboardEnv keeps secrets server-side and applies safe demo defaults', () => {
   const env = getDashboardEnv({});
   assert.equal(env.HONCHO_BASE_URL, 'http://localhost:8000');
   assert.equal(env.ENABLE_MUTATIONS, false);
-  assert.equal(env.USE_DEMO_DATA, false);
+  assert.equal(env.USE_DEMO_DATA, true);
+  assert.equal(env.ALLOW_LIVE_PUBLIC_DATA, false);
   assert.equal(env.NEXT_PUBLIC_DASHBOARD_NAME, 'Honcho Mission Control');
   assert.equal(Object.prototype.propertyIsEnumerable.call(env, 'HONCHO_API_KEY'), false);
 });

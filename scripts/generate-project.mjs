@@ -374,7 +374,8 @@ w('.env.example', `HONCHO_BASE_URL=http://localhost:8000
 HONCHO_API_KEY=
 HONCHO_WORKSPACE_ID=
 ENABLE_MUTATIONS=false
-USE_DEMO_DATA=false
+USE_DEMO_DATA=true
+ALLOW_LIVE_PUBLIC_DATA=false
 NEXT_PUBLIC_DASHBOARD_NAME=Honcho Mission Control
 `);
 w('Dockerfile', `FROM node:22-alpine AS deps

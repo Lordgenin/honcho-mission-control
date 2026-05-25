@@ -8,9 +8,10 @@ Honcho Mission Control is designed for a safe public-repo default posture:
 
 - `HONCHO_API_KEY` is read only on the server.
 - Browser code talks to the Next.js `/api/honcho/[...path]` proxy, not directly to Honcho.
+- Raw live Honcho memory is hidden in public protected mode unless `ALLOW_LIVE_PUBLIC_DATA=true` is explicitly set server-side for a trusted operator deployment.
 - Mutations are disabled by default. Non-read proxy requests return `403` unless `ENABLE_MUTATIONS=true`.
-- Settings and status views show whether a secret is configured, but never print the secret value.
-- Demo/live state is labeled so public demos are not mistaken for private production memory.
+- Settings and status views should show high-level posture labels, not secrets, API-key flags, env-style labels, raw paths, or private infrastructure hints.
+- Demo/live/live-partial/degraded state is labeled so public demos are not mistaken for private production memory.
 
 Do not commit `.env.local`, real API keys, private workspace ids, private hostnames, or deployment-only notes.
 
@@ -33,11 +34,13 @@ cp .env.example .env.local
 Common variables:
 
 ```bash
-HONCHO_BASE_URL=http://localhost:8000
+HONCHO_BASE_URL=https://honcho.example.com
 HONCHO_API_KEY=
-HONCHO_WORKSPACE_ID=
+HONCHO_WORKSPACE_ID=workspace-example
 ENABLE_MUTATIONS=false
-USE_DEMO_DATA=false
+USE_DEMO_DATA=true
+ALLOW_LIVE_PUBLIC_DATA=false
+HERMES_KANBAN_DBS=<container-kanban-db>
 NEXT_PUBLIC_DASHBOARD_NAME=Honcho Mission Control
 ```
 
@@ -45,7 +48,9 @@ NEXT_PUBLIC_DASHBOARD_NAME=Honcho Mission Control
 - `HONCHO_API_KEY`: Optional server-side API key, if your Honcho deployment requires one.
 - `HONCHO_WORKSPACE_ID`: Optional workspace scope. Set this for the workspace you want to inspect first.
 - `ENABLE_MUTATIONS`: Keep `false` unless you intentionally want write operations enabled.
-- `USE_DEMO_DATA`: Set `true` to run without Honcho and see sample data.
+- `USE_DEMO_DATA`: Defaults to `true` so public/local runs use bundled sample data. Set `false` only when you also intentionally enable live-private data for a trusted operator deployment.
+- `ALLOW_LIVE_PUBLIC_DATA`: Keep `false` for public/shared dashboards. Set `true` only for trusted operator deployments where live Honcho memory may render.
+- `HERMES_KANBAN_DBS`: Optional delimiter-separated list of container-visible Kanban DB files for sanitized agent runtime; prefer a read-only mount or copied snapshot.
 - `NEXT_PUBLIC_DASHBOARD_NAME`: Public UI title. This value is safe to expose.
 
 ## Run locally with demo data
@@ -69,7 +74,9 @@ Expected result:
 
 ```bash
 cp .env.example .env.local
-# edit .env.local for your Honcho server/workspace
+# edit .env.local for your Honcho server/workspace and set:
+# USE_DEMO_DATA=false
+# ALLOW_LIVE_PUBLIC_DATA=true
 npm install
 npm run dev
 ```
@@ -78,12 +85,12 @@ Open http://localhost:3000.
 
 Recommended first checks:
 
-1. `/settings` - verify the source, workspace id, read-only state, and API-key presence.
-2. `/dashboard` - verify API health and recent memory activity.
-3. `/workspaces` - verify the expected workspace is visible.
-4. `/agents` - verify Hermes agents are discovered.
+1. `/settings` - verify high-level source, workspace scope, public privacy posture, and read-only state without env-style public diagnostics.
+2. `/dashboard` - verify API health, recent memory activity, freshness, and subsystem degraded reasons.
+3. `/workspaces` - verify the expected workspace is visible only when live private data is intentionally enabled.
+4. `/agents` - verify Hermes agents are discovered from sanitized Kanban runtime, Honcho enrichment, or source-labeled fallback.
 5. `/performance` - inspect dashboard-to-Honcho request telemetry, or confirm it is unknown/unavailable.
-6. `/context` - inspect normalized data if anything looks wrong.
+6. `/context` - inspect normalized data only in trusted operator mode; keep public context demo/redacted.
 
 ## Production-style Node run
 
@@ -110,6 +117,23 @@ Check the container logs if the app does not become reachable:
 ```bash
 docker compose -f docker-compose.dashboard.yml logs -f
 ```
+
+## Kanban runtime mount
+
+To show agent-company style operational state, mount the intended Hermes Kanban SQLite DB read-only and point the dashboard at the container-visible file.
+
+```yaml
+services:
+  honcho-mission-control:
+    environment:
+      HERMES_KANBAN_DBS: "<container-kanban-db>"
+    volumes:
+      - "<host-kanban-db>:<container-kanban-db>:ro"
+```
+
+`HERMES_KANBAN_DBS` may contain multiple candidate DB files using the platform path delimiter. `HERMES_KANBAN_DB` and `HERMES_KANBAN_DATABASE` are supported as single-file fallbacks. Avoid relying on default locations in production because the server may otherwise read an empty or unrelated board.
+
+Verify the mount by creating a safe canary task in the intended board, refreshing `/agents`, and confirming the assignee/card shows a Kanban source badge and freshness/activity label. If `/health` and `/agents` disagree, treat the deployment as degraded rather than public-ready.
 
 ## Agent discovery expectations
 
@@ -188,6 +212,7 @@ npm run build
 
 For live deployments, also verify:
 
-- `/api/health` or equivalent health check returns OK if enabled.
-- `/agents` renders discovered agents from the target workspace.
-- Public pages do not expose private memory, secrets, local IPs, or personal deployment notes.
+- `/api/health` or equivalent health check returns OK if enabled, with safe source labels instead of raw paths.
+- `/agents` renders discovered agents from the target workspace or mounted Kanban runtime, with source/freshness labels.
+- Public pages do not expose private memory, secrets, local IPs, raw paths, env-style labels, API-key flags, or personal deployment notes.
+- If current QA finds missing canaries or leaked diagnostics, document the deployment as not public-ready until remediated.

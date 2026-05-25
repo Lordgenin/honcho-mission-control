@@ -27,7 +27,7 @@ REV="$(git -C "$LOCAL_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ARCHIVE="/tmp/honcho-mission-control-${REV}-${STAMP}.tar.gz"
 REMOTE_ARCHIVE="/tmp/honcho-mission-control-${REV}-${STAMP}.tar.gz"
-LOCAL_KANBAN_DB="${LOCAL_KANBAN_DB:-/root/.hermes/kanban/boards/agent-company/kanban.db}"
+LOCAL_KANBAN_DB="${LOCAL_KANBAN_DB:-}"
 REMOTE_KANBAN_DB=""
 SSH=(ssh -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$REMOTE_USER@$REMOTE_HOST")
 SCP=(scp -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
@@ -49,12 +49,12 @@ tar \
 "${SCP[@]}" "$ARCHIVE" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_ARCHIVE"
 rm -f "$ARCHIVE"
 
-if [ -r "$LOCAL_KANBAN_DB" ]; then
+if [ -n "$LOCAL_KANBAN_DB" ] && [ -r "$LOCAL_KANBAN_DB" ]; then
   REMOTE_KANBAN_DB="/tmp/honcho-kanban-${REV}-${STAMP}.db"
   echo "Uploading sanitized Kanban DB snapshot for read-only dashboard mount..."
   "${SCP[@]}" "$LOCAL_KANBAN_DB" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_KANBAN_DB"
 else
-  echo "Local Kanban DB snapshot not readable at configured path; deploy will rely on remote host mount." >&2
+  echo "LOCAL_KANBAN_DB not set/readable; deploy will rely on remote host mount or show Kanban degraded." >&2
 fi
 
 echo "Installing source into incoming deploy directory with safe public defaults..."
@@ -110,7 +110,7 @@ if [ -n "$REMOTE_KANBAN_DB" ] && [ -r "$REMOTE_KANBAN_DB" ]; then
   set_kv HERMES_KANBAN_HOST_DB "$REMOTE_INCOMING/runtime/kanban.db" "$TMPDIR/.env"
   set_kv HERMES_KANBAN_SNAPSHOT_HOST_DB "$REMOTE_INCOMING/runtime/kanban.db" "$TMPDIR/.env"
 else
-  set_default_kv HERMES_KANBAN_HOST_DB /root/.hermes/kanban/boards/agent-company/kanban.db "$TMPDIR/.env"
+  set_default_kv HERMES_KANBAN_HOST_DB '' "$TMPDIR/.env"
 fi
 find "$REMOTE_INCOMING" -mindepth 1 ! -name '.env' -exec rm -rf {} +
 cp -a "$TMPDIR"/. "$REMOTE_INCOMING"/

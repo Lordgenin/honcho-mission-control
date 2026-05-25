@@ -15,11 +15,11 @@ Honcho Mission Control uses Next.js App Router pages. Routes are safe to browse 
 - `/workspaces/[workspaceId]/sessions/[sessionId]` - Session transcript.
 - `/messages` - Searchable global message stream.
 - `/conclusions` - Searchable durable conclusions.
-- `/context` - Combined normalized memory context for operators: workspaces, discovered agents, recent messages, and conclusions.
+- `/context` - Combined normalized memory context for operators: workspaces, discovered agents, recent messages, and conclusions. Public mode should remain demo/redacted; live context is operator-only.
 - `/api-playground` - Read-only proxy endpoint guidance. Browser requests target the Next.js server proxy, not Honcho directly.
 - `/webhooks` - Webhook configuration preview; actions are disabled by default.
 - `/performance` - Dashboard-to-Honcho request telemetry: health, latency samples, failures, slow endpoints, freshness, and trend samples when available. It shows unknown/unavailable states when telemetry has not been captured.
-- `/settings` - Runtime environment and deployment posture without exposing server-side secrets.
+- `/settings` - Runtime posture with high-level public labels; it should not expose secrets, API-key flags, env-style labels, raw paths, or private infrastructure hints.
 
 Unknown routes render `app/not-found.tsx` instead of falling back to the overview.
 
@@ -34,14 +34,17 @@ The UI distinguishes these cases:
 - No search results: rows exist, but the current query does not match nested fields.
 - No agents discovered: Kanban runtime, Hermes peer ids, and explicit Honcho agent metadata all returned no agents.
 - Kanban degraded: the server could not read Hermes Kanban runtime; activity/current-goal fields fall back to Honcho enrichment or unknown without exposing raw runtime errors.
+- Public protected: live Honcho memory is hidden because `ALLOW_LIVE_PUBLIC_DATA` is not enabled; demo/redacted content may be shown.
+
+Each operational view should label source, freshness, degraded reason, and confidence/provenance when relevant. CLI-originated work can show up only through Kanban/Honcho records; terminal output and private worker comments are not dashboard data sources.
 
 ## Useful first-run path
 
 For a new operator:
 
 1. `/` - Understand what the dashboard is for and what is safe by default.
-2. `/settings` - Confirm demo/live state, workspace id, mutation posture, and API-key presence.
-3. `/dashboard` - Confirm API health and high-level data counts.
-4. `/agents` - Confirm Hermes agents are discovered.
-5. `/workspaces` - Browse source workspaces and drill into peers/sessions.
-6. `/context` - Debug normalized data if any counts look wrong.
+2. `/settings` - Confirm public protected/live-private state, workspace scope, mutation posture, and safe labels.
+3. `/dashboard` - Confirm API health, subsystem status, freshness, and high-level data counts.
+4. `/agents` - Confirm Hermes agents are discovered from Kanban runtime, Honcho enrichment, or fallback with source badges.
+5. `/workspaces` - Browse source workspaces and drill into peers/sessions only when live private data is intentionally enabled.
+6. `/context` - Debug normalized data only in trusted operator mode; keep public context demo/redacted.

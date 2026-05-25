@@ -27,17 +27,21 @@ HONCHO_BASE_URL=https://honcho.example.com
 HONCHO_WORKSPACE_ID=workspace-example
 HONCHO_API_KEY=<server-side-secret>
 ENABLE_MUTATIONS=false
-USE_DEMO_DATA=false
+USE_DEMO_DATA=true
+ALLOW_LIVE_PUBLIC_DATA=false
+HERMES_KANBAN_DBS=<container-kanban-db>
 NEXT_PUBLIC_DASHBOARD_NAME="Honcho Mission Control"
 ```
 
 Notes:
 
 - `HONCHO_BASE_URL` points to your Honcho API origin.
-- `HONCHO_WORKSPACE_ID` is optional. Set it to scope the dashboard to one workspace, or leave it empty to list available workspaces.
+- `HONCHO_WORKSPACE_ID` is optional. Set it to scope the dashboard to one workspace, or leave it empty to list available workspaces in operator mode.
 - `HONCHO_API_KEY` is optional for deployments that do not require authentication, but if present it must be server-side only.
 - `ENABLE_MUTATIONS` should remain `false` for public or shared deployments unless you have reviewed and intentionally enabled every exposed write path.
-- `USE_DEMO_DATA=true` switches the UI to bundled sample data and should be visibly treated as demo mode.
+- `USE_DEMO_DATA=true` is the public/local default. Set it to `false` only in trusted operator mode together with `ALLOW_LIVE_PUBLIC_DATA=true`.
+- `ALLOW_LIVE_PUBLIC_DATA=false` is the public protected default. Set it to `true` only for authenticated/private operator deployments where live Honcho memory may render.
+- `HERMES_KANBAN_DBS`, `HERMES_KANBAN_DB`, and `HERMES_KANBAN_DATABASE` identify optional container-visible Kanban DB files for sanitized agent runtime. Prefer a read-only mount or copied snapshot.
 
 ## Local run
 
@@ -49,7 +53,7 @@ USE_DEMO_DATA=true npm run dev
 
 Open `http://localhost:3000` for a demo-data run.
 
-For live Honcho, put your private values in `.env.local` or your deployment secret manager, then run:
+For live Honcho, put your private values in `.env.local` or your deployment secret manager, set `USE_DEMO_DATA=false` and `ALLOW_LIVE_PUBLIC_DATA=true`, then run:
 
 ```bash
 npm run dev
@@ -61,14 +65,17 @@ Do not paste real API keys, private hostnames, internal addresses, or workspace 
 
 Before exposing the dashboard beyond your own machine or private network:
 
-- Serve it behind HTTPS and your normal authentication layer.
+- Serve it behind HTTPS and your normal authentication layer if live private data is enabled.
 - Keep `.env.local` and deployment secrets out of git.
 - Keep `HONCHO_API_KEY` server-side; browser code should call only the Next.js proxy.
+- Keep `ALLOW_LIVE_PUBLIC_DATA=false` for public demos or shared unauthenticated dashboards. Only set it true for trusted operator access.
 - Keep `ENABLE_MUTATIONS=false` unless you have a reviewed mutation policy.
-- Confirm the Honcho API origin is the intended public or private endpoint.
-- Confirm logs and screenshots redact API keys, bearer tokens, workspace IDs, private URLs, and operator names if those are sensitive.
-- Prefer a single scoped `HONCHO_WORKSPACE_ID` for public demos.
-- Label demo, partial-live, and live modes clearly in the UI.
+- Confirm the Honcho API origin is the intended endpoint and is not printed in browser-visible public pages.
+- Confirm logs and screenshots redact API keys, bearer tokens, workspace IDs, private URLs, raw paths, operator names, and real operational messages if those are sensitive.
+- Prefer a single scoped `HONCHO_WORKSPACE_ID` for operator demos; use placeholders in public docs.
+- Label demo, public protected, partial-live, live-private, degraded, and unknown modes clearly in the UI.
+- If mounting Kanban runtime, mount the intended board read-only, verify `/agents` with a safe canary task, and keep raw task bodies/comments out of the UI.
+- If QA finds leaked env labels, API-key flags, raw paths, or missing Kanban canaries, state that the deployment is not public-ready until fixed.
 
 ## Proxy and public redaction rules
 
@@ -83,11 +90,41 @@ Default proxy posture:
 
 When documenting or debugging proxy calls publicly, use placeholders such as `{workspaceId}`, `{sessionId}`, `{peerId}`, and `{conclusionId}`. Do not include real workspace IDs, tokens, private base URLs, task IDs, local paths, or company-specific naming.
 
+## Kanban runtime for agent-company style boards
+
+Kanban runtime is optional. When enabled, it gives `/agents` a live operational signal from Hermes task state without exposing private Honcho memory.
+
+Required configuration:
+
+- Mount the intended SQLite board file read-only into the dashboard container or process namespace.
+- Set `HERMES_KANBAN_DBS` to a delimiter-separated candidate list, or set `HERMES_KANBAN_DB` / `HERMES_KANBAN_DATABASE` for a single candidate.
+- Use placeholders in public docs, for example `<host-kanban-db>:<container-kanban-db>:ro`.
+
+Verification:
+
+1. Create a safe canary task with a non-private title in the intended board.
+2. Confirm `/health` reports Kanban configured/readable using a safe source label, not a raw path.
+3. Confirm `/agents` shows the canary assignee or task status with `kanban-task-runtime` source/freshness labels.
+4. If health says readable but `/agents` is not attached, treat it as a release-blocking degraded state and document it honestly.
+
+The public Kanban snapshot may include task id, safe title, assignee, status, and safe timestamps. It must not include task body, comments, run metadata, heartbeat notes, raw errors, private paths, private IPs, or secrets.
+
 ## Demo data and metrics honesty
 
 Demo mode is for UI exploration only. It may include realistic-looking sessions, messages, webhooks, and request telemetry examples, but it is not live telemetry.
 
 Live mode currently reports telemetry collected from the dashboard's own server-side requests to Honcho: request success/failure, latency samples, slow endpoints, freshness, and optional trend samples. It is useful for debugging the dashboard connection, but it is not a full Honcho service observability layer. Do not claim service-level latency, request-rate, or error-rate metrics unless you wire a verified metrics source and label it clearly. If no request telemetry has been captured, the Performance page should show unknown, empty, or unavailable states instead of inventing values.
+
+## Live-state grammar
+
+Use the same vocabulary across routes:
+
+- `source`: where a value came from (`demo`, `live`, `live-partial`, `kanban-task-runtime`, `honcho-peer-enrichment`, `static-hermes-peer-fallback`, `fallback-not-reported`).
+- `freshness`: fresh, stale, unknown, or unavailable based on safe timestamps; do not infer live activity from a page render alone.
+- `degraded reason`: a sanitized reason such as timeout, auth failure, unsupported route, unreadable Kanban DB, empty workspace, or not configured.
+- `confidence/provenance`: conclusions should show reported confidence only when provided by Honcho. Otherwise say confidence is unavailable and include evidence/source/last-updated labels when present.
+
+CLI-originated work appears only if it was written to Kanban or Honcho and the dashboard can read that source. The dashboard cannot display arbitrary terminal output or private worker comments safely.
 
 ## Troubleshooting
 

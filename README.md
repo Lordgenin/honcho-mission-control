@@ -17,10 +17,11 @@ The repo is intended to be useful for two audiences: people evaluating the inter
 - Provides a production-oriented Next.js App Router UI for Honcho memory operations.
 - Reads Honcho data through a server-side `/api/honcho/[...path]` proxy so `HONCHO_API_KEY` stays on the server.
 - Defaults to read-only mode. Mutating proxy requests return `403` unless `ENABLE_MUTATIONS=true`.
+- Defaults to public protected data exposure. Raw live Honcho memory is hidden unless `ALLOW_LIVE_PUBLIC_DATA=true` is set server-side for a trusted operator deployment.
 - Supports demo mode with sample workspaces, peers, sessions, messages, conclusions, webhooks, request telemetry samples, and Hermes-style agents.
-- Supports live mode against a configured Honcho service and workspace.
-- Discovers agents from Honcho peers using explicit agent metadata and a Hermes peer-id fallback for live peers such as `hermes` and `hermes-*`.
-- Labels runtime state clearly in the shell and dashboard: demo/live/live-partial source, API health, read-only/mutation posture, workspace scope, and discovered agent counts.
+- Supports live private mode against a configured Honcho service and workspace when explicitly enabled.
+- Discovers agents from sanitized Hermes Kanban runtime first, Honcho peer metadata second, and a Hermes peer-id fallback for live peers such as `hermes` and `hermes-*`.
+- Labels runtime state clearly in the shell and dashboard: demo/live/live-partial source, freshness, degraded reason, read-only/mutation posture, confidence/provenance, workspace scope, and discovered agent counts.
 - Shows degraded states explicitly instead of treating upstream failures as empty datasets.
 
 ## Prerequisites
@@ -46,12 +47,22 @@ The shell should identify the source as demo data. The Agents page should show s
 
 ## Operator quickstart
 
-1. Start with demo mode and open `/`, `/dashboard`, and `/agents` to understand the UI language.
-2. Switch `USE_DEMO_DATA=false`, set `HONCHO_BASE_URL`, and optionally set `HONCHO_WORKSPACE_ID` for a scoped live run.
-3. Open `/settings` first. Confirm source, workspace scope, API-key presence, and read-only/mutation posture.
-4. Open `/dashboard`. Confirm API health, generated timestamp, live/live-partial state, and high-level counts.
-5. Open `/agents`. Confirm peers are discovered through explicit agent metadata or the `hermes` / `hermes-*` fallback.
-6. If anything looks wrong, open `/context` to inspect the normalized snapshot the UI received.
+1. Start with demo mode and open `/`, `/dashboard`, and `/agents` to understand the UI language without connecting private memory.
+2. For a public/shared dashboard, leave `ALLOW_LIVE_PUBLIC_DATA=false` and `ENABLE_MUTATIONS=false`. This is the protected default even when server-side Honcho settings exist.
+3. For a trusted operator-only dashboard, switch `USE_DEMO_DATA=false`, set `HONCHO_BASE_URL`, optionally set `HONCHO_WORKSPACE_ID`, and explicitly set `ALLOW_LIVE_PUBLIC_DATA=true` server-side.
+4. If you want Kanban-backed agent activity, mount the intended Hermes Kanban SQLite DB read-only and set `HERMES_KANBAN_DBS` or `HERMES_KANBAN_DB` to the container-visible path.
+5. Open `/settings` first. Confirm high-level source, workspace scope, public privacy posture, and read-only/mutation posture without exposing env-style labels or secrets.
+6. Open `/dashboard`. Confirm API health, generated timestamp, live/live-partial state, subsystem status, freshness, and degraded reasons.
+7. Open `/agents`. Confirm cards are sourced from sanitized Kanban runtime, Honcho peer enrichment, or the `hermes` / `hermes-*` fallback with visible source badges.
+8. If anything looks wrong, open `/context` only in a trusted operator deployment; keep public context demo/redacted.
+
+## Public vs operator/live-private modes
+
+Public mode is the safe default. It may show demo content, high-level posture labels, and sanitized Kanban task runtime from a read-only DB mount, but it must not show raw Honcho memory, raw messages, private peer metadata, env-style diagnostic labels, API-key flags, raw runtime paths, private network hints, tokens, or real operational message bodies.
+
+Operator/live-private mode requires `ALLOW_LIVE_PUBLIC_DATA=true` in the server environment and should be served behind authentication. `ENABLE_MUTATIONS=true` is separate and should stay false unless write paths were intentionally reviewed.
+
+See `docs/PUBLIC_OPERATOR_MODES.md` for the redaction boundary, explicit live-private opt-in, Kanban DB mount examples, wrong/default DB diagnostics, live-state grammar, and public onboarding checklist.
 
 ## Quick start: live Honcho mode
 
@@ -64,13 +75,16 @@ cp .env.example .env.local
 2. Edit `.env.local` for your Honcho deployment.
 
 ```bash
-HONCHO_BASE_URL=http://localhost:8000
+HONCHO_BASE_URL=https://honcho.example.com
 HONCHO_API_KEY=your-server-side-key-if-required
-HONCHO_WORKSPACE_ID=your-workspace-id
+HONCHO_WORKSPACE_ID=workspace-example
 ENABLE_MUTATIONS=false
 USE_DEMO_DATA=false
+ALLOW_LIVE_PUBLIC_DATA=true
 NEXT_PUBLIC_DASHBOARD_NAME=Honcho Mission Control
 ```
+
+Only set `ALLOW_LIVE_PUBLIC_DATA=true` for a trusted operator/private deployment. Leave it false for public demos so live Honcho memory stays demo/redacted by default.
 
 3. Install dependencies and run the app.
 
@@ -134,7 +148,7 @@ These views expose searchable Honcho memory resources. Search filters real neste
 
 ### Context (`/context`)
 
-The Context view presents a combined JSON-oriented snapshot for operators: workspaces, discovered agents, recent messages, and conclusions. Use it for debugging what the UI received after normalization.
+The Context view presents a combined JSON-oriented snapshot for operators: workspaces, discovered agents, recent messages, and conclusions. Keep this page demo/redacted in public mode. Treat live context as operator-only because raw resource shapes can be sensitive even when obvious secrets are stripped.
 
 ### API playground (`/api-playground`)
 
@@ -226,7 +240,7 @@ The Performance page reports dashboard-to-Honcho request telemetry collected dur
 
 ## Generic remote deploy helper
 
-`scripts/deploy-remote.sh` is an opt-in helper for operators who already have a private deployment target. It intentionally has no host, username, SSH key, remote path, or workspace defaults in the public repository. Provide all deployment details through environment variables in your private shell, CI secret store, or ops wrapper:
+`scripts/deploy-remote.sh` is an opt-in helper for operators who already have a private deployment target. It intentionally has no host, username, SSH key, remote path, workspace, or Kanban DB defaults in the public repository. Provide all deployment details through environment variables in your private shell, CI secret store, or ops wrapper:
 
 ```bash
 DEPLOY_HOST=example-host \
@@ -235,6 +249,7 @@ DEPLOY_SSH_KEY=/path/to/private/key \
 DEPLOY_APP_DIR=/path/to/current/app \
 DEPLOY_INCOMING_DIR=/path/to/incoming/source \
 DEPLOY_COMMAND=/path/to/deploy-command \
+LOCAL_KANBAN_DB=/path/to/sanitized-kanban-snapshot.db \
 ./scripts/deploy-remote.sh
 ```
 
@@ -254,11 +269,15 @@ Dependency security note: the project pins an npm `overrides.next.postcss` entry
 
 ## Documentation
 
+- `docs/PUBLIC_OPERATOR_MODES.md` - public/operator modes, redaction boundary, Kanban DB configuration, live-state grammar, and safe onboarding checklist.
 - `docs/SELF_HOSTING.md` - deployment and security posture.
+- `docs/public-self-hosting.md` - safe public self-hosting guide and production checklist.
 - `docs/HERMES_MEMORY_VIEW.md` - how Honcho resources map to Hermes memory and agents.
 - `docs/ROUTES.md` - route-by-route reference.
 - `docs/API_CLIENT.md` - live Honcho client and proxy behavior.
 
 ## Known limitations
+
+Current public-readiness note: the latest operator QA should be treated as not public-ready until `/agents` live Kanban canaries are visible or consistently degraded, and public health/settings surfaces avoid env-style labels, API-key flags, private infrastructure hints, and raw runtime paths.
 
 Live Honcho REST shapes can vary by deployment. The client normalizes common collection envelopes such as `items`, `results`, `data`, and resource-specific keys, and fails safely for offline, unauthorized, malformed, or slow responses. If your deployment exposes different endpoint names or peer shapes, update `lib/honcho-client.js`, `lib/data-utils.js`, and the docs together.

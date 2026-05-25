@@ -7,13 +7,13 @@ Honcho Mission Control presents Hermes memory through ordinary Honcho resources.
 - Workspaces: memory domains, projects, tenants, or operating contexts.
 - Peers: humans, applications, and agents participating in a workspace.
 - Sessions: conversations, task runs, investigations, councils, or other bounded exchanges.
-- Messages: raw exchanged content and evidence.
-- Conclusions: durable facts and synthesized memory.
-- Agents: peers interpreted as Hermes-style agents by metadata or peer-id convention.
+- Messages: raw exchanged content and evidence. Public mode should keep these demo/redacted unless live private data is explicitly enabled.
+- Conclusions: durable facts and synthesized memory with reported confidence/provenance only when available.
+- Agents: peers interpreted as Hermes-style agents by sanitized Kanban runtime, explicit metadata, or peer-id convention.
 
 ## Agent discovery
 
-Agent discovery is intentionally data-driven. The dashboard does not hardcode a fixed team.
+Agent discovery is intentionally data-driven. The dashboard does not hardcode a fixed team. Runtime activity prefers a sanitized Hermes Kanban DB when configured; Honcho peer records enrich identity/capabilities; peer-id fallback only proves that a peer looks like an agent, not that it is active.
 
 A peer is treated as an agent when one of these explicit metadata markers is present:
 
@@ -46,7 +46,7 @@ If fields are absent, the UI uses safe fallback labels and capability chips inst
 
 ## Interpreting statuses
 
-Status badges are display hints, not an independent monitoring system. They reflect data returned by Honcho peer metadata or dashboard fallback logic.
+Status badges are display hints, not an independent monitoring system. They reflect data returned by sanitized Kanban runtime, Honcho peer metadata, or dashboard fallback logic.
 
 Common status tones:
 
@@ -55,7 +55,14 @@ Common status tones:
 - offline/failed/error: red
 - missing/unknown: neutral
 
-If heartbeats or statuses are unknown, confirm your agent process writes those fields into Honcho peer metadata or use the peer-id fallback only as identity discovery.
+Live-state grammar:
+
+- `source` says where a field came from, for example `kanban-task-runtime`, `honcho-peer-enrichment`, `static-hermes-peer-fallback`, or `fallback-not-reported`.
+- `freshness` says whether a safe timestamp is fresh, stale, unknown, or unavailable.
+- `degraded` should include a sanitized reason, not a raw exception or filesystem path.
+- `confidence` is shown only when Honcho reports a numeric value; otherwise it should be labeled unavailable with provenance/evidence fields when present.
+
+If heartbeats or statuses are unknown, confirm your agent process writes safe fields into Kanban or Honcho peer metadata. The peer-id fallback alone should not imply monitoring data exists.
 
 ## Views that help debug memory
 
