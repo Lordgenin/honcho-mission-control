@@ -15,7 +15,7 @@ test('getDashboardEnv keeps secrets server-side and applies safe defaults', () =
   assert.equal(Object.prototype.propertyIsEnumerable.call(env, 'HONCHO_API_KEY'), false);
 });
 
-test('getPublicDashboardEnv redacts upstream Honcho URL and exposes API key presence only', () => {
+test('getPublicDashboardEnv redacts upstream Honcho URL, API-key flags, and private-network hints', () => {
   const publicEnv = getPublicDashboardEnv({
     HONCHO_BASE_URL: 'http://127.0.0.1:8001/private-path',
     HONCHO_API_KEY: 'example-api-key-present',
@@ -26,10 +26,14 @@ test('getPublicDashboardEnv redacts upstream Honcho URL and exposes API key pres
 
   assert.equal(publicEnv.HONCHO_BASE_URL, undefined);
   assert.equal(publicEnv.HONCHO_API_KEY, undefined);
-  assert.equal(publicEnv.hasHonchoApiKey, true);
-  assert.equal(publicEnv.honchoConnection, 'loopback/self-hosted');
+  assert.equal(publicEnv.HONCHO_WORKSPACE_ID, undefined);
+  assert.equal(publicEnv.ENABLE_MUTATIONS, undefined);
+  assert.equal(publicEnv.USE_DEMO_DATA, undefined);
+  assert.equal(publicEnv.hasHonchoApiKey, undefined);
+  assert.equal(publicEnv.honchoConnection, 'server-side connection configured');
   assert.equal(JSON.stringify(publicEnv).includes('127.0.0.1'), false);
   assert.equal(JSON.stringify(publicEnv).includes('example-api-key-present'), false);
+  assert.equal(JSON.stringify(publicEnv).includes('self-hosted'), false);
 });
 
 test('getHonchoSnapshot does not serialize raw base URL or API key secrets', async () => {
@@ -44,7 +48,7 @@ test('getHonchoSnapshot does not serialize raw base URL or API key secrets', asy
     assert.equal(serialized.includes('127.0.0.1'), false);
     assert.equal(serialized.includes('internal-honcho'), false);
     assert.equal(serialized.includes('example-api-key-present'), false);
-    assert.equal(snapshot.env.hasHonchoApiKey, true);
+    assert.equal(snapshot.env.hasHonchoApiKey, undefined);
   } finally {
     process.env = originalEnv;
   }
@@ -242,7 +246,7 @@ test('getHonchoSnapshot reads v3 workspace-scoped lists and derives session mess
   }
 });
 
-test('health payload reports safe build, public mode, and container Kanban diagnostics', () => {
+test('health payload reports safe build, public mode, and redacted Kanban diagnostics', () => {
   const payload = getHealthPayload({
     now: new Date('2026-05-25T00:00:00Z'),
     envSource: {
@@ -259,7 +263,20 @@ test('health payload reports safe build, public mode, and container Kanban diagn
   assert.equal(payload.runtime.public_data_mode, 'protected-default');
   assert.equal(payload.runtime.live_private_data_requires_server_opt_in, true);
   assert.equal(payload.kanban.configured, true);
-  assert.equal(payload.kanban.container_mount, '/data/hermes/kanban.db');
+  assert.equal(payload.kanban.container_mount, undefined);
+  assert.equal(typeof payload.kanban.source_readable, 'boolean');
   assert.equal(payload.kanban.source_label, 'container-mounted-db');
+  assert.equal(JSON.stringify(payload).includes('/data/hermes/kanban.db'), false);
   assert.equal(JSON.stringify(payload).includes('/root/.hermes'), false);
+});
+
+test('health payload can reserve raw paths for explicit operator diagnostics', () => {
+  const payload = getHealthPayload({
+    now: new Date('2026-05-25T00:00:00Z'),
+    exposeOperatorDiagnostics: true,
+    envSource: { HERMES_KANBAN_DBS: '/data/hermes/kanban.db' }
+  });
+
+  assert.equal(payload.kanban.container_mount, undefined);
+  assert.equal(payload.operator_diagnostics.kanban_container_mount, '/data/hermes/kanban.db');
 });

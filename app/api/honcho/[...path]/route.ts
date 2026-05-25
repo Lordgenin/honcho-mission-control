@@ -12,7 +12,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
   if (!isAllowedProxyPath(path)) return NextResponse.json({ ok: false, error: 'unsupported-proxy-path', message: 'Only Honcho v3 API paths are proxied.' }, { status: unsupportedStatus });
   if (!env.ALLOW_LIVE_PUBLIC_DATA) return NextResponse.json({ ok: false, error: 'live-data-disabled', message: 'Public runtime uses demo data unless live Honcho exposure is explicitly allowed server-side.' }, { status: 403, headers: { 'cache-control': 'no-store' } });
   const readOnlyPost = request.method === 'POST' && isReadOnlyPostPath(path);
-  if (MUTATING.has(request.method) && !readOnlyPost && !env.ENABLE_MUTATIONS) return NextResponse.json({ ok: false, error: 'mutations-disabled', message: 'Set ENABLE_MUTATIONS=true to enable write operations.' }, { status: 403 });
+  if (MUTATING.has(request.method) && !readOnlyPost && !env.ENABLE_MUTATIONS) return NextResponse.json({ ok: false, error: 'mutations-disabled', message: 'Write operations are disabled in this public runtime.' }, { status: 403 });
   const base = env.HONCHO_BASE_URL.endsWith('/') ? env.HONCHO_BASE_URL : env.HONCHO_BASE_URL + '/';
   const url = new URL(path.join('/'), base);
   request.nextUrl.searchParams.forEach((value: string, key: string) => url.searchParams.set(key, value));

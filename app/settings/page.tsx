@@ -2,16 +2,17 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 import { Shell } from '../../components/shell';
 import { SettingsView } from '../../components/views';
-import { getPublicDashboardEnv } from '../../lib/env.js';
+import { getDashboardEnv, getPublicDashboardEnv } from '../../lib/env.js';
 
 export default async function Page() {
+  const runtime = getDashboardEnv();
   const env = getPublicDashboardEnv();
   const snapshot = {
-    source: env.USE_DEMO_DATA ? 'demo' : 'live-settings',
-    readOnly: !env.ENABLE_MUTATIONS,
+    source: runtime.USE_DEMO_DATA ? 'demo' : 'live-settings',
+    readOnly: !runtime.ENABLE_MUTATIONS,
     env,
     status: { ok: true },
-    mode: env.USE_DEMO_DATA ? 'demo' : 'live',
+    mode: runtime.USE_DEMO_DATA ? 'demo' : 'live',
     generated_at: new Date().toISOString(),
     workspaces: [],
     peers: [],
