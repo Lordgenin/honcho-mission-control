@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDashboardEnv, getPublicDashboardEnv } from '../lib/env.js';
-import { discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion } from '../lib/data-utils.js';
+import { discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion, sanitizePublicValue } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 import { getHealthPayload } from '../lib/health.js';
@@ -245,6 +245,62 @@ test('getHonchoSnapshot reads v3 workspace-scoped lists and derives session mess
     globalThis.fetch = originalFetch;
     process.env = originalEnv;
   }
+});
+
+test('getHonchoSnapshot in unauthenticated live mode strips message and memory bodies while preserving safe counts', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  process.env.HONCHO_BASE_URL = 'http://honcho.example';
+  process.env.HONCHO_WORKSPACE_ID = 'workspace-1';
+  process.env.USE_DEMO_DATA = 'false';
+  process.env.ALLOW_LIVE_PUBLIC_DATA = 'true';
+  process.env.ENABLE_MUTATIONS = 'true';
+  globalThis.fetch = async (url) => {
+    const path = new URL(String(url)).pathname;
+    const payloads = {
+      '/v3/workspaces/workspace-1/peers/list': { peers: [{ id: 'hermes-jarvis', metadata: { type: 'agent', current_goal: 'Private operator goal mentions JWT setup', raw: { token: 'secret-token-value' } } }] },
+      '/v3/workspaces/workspace-1/sessions/list': { sessions: [{ id: 'session-1', is_active: true, metadata: { title: 'Private imported memory session' } }] },
+      '/v3/workspaces/workspace-1/conclusions/list': { conclusions: [{ id: 'conclusion-1', text: 'Imported memory says local Honcho JWT exists', metadata: { raw: { config: 'HONCHO_API_KEY=secret' } } }] },
+      '/v3/workspaces/workspace-1/sessions/session-1/messages/list': { messages: [{ id: 'message-1', content: 'Raw message body includes JWT and /root/.hermes/config.yaml', raw: { nested: { token: 'secret-token-value' } } }] }
+    };
+    return new Response(JSON.stringify(payloads[path] || {}), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const snapshot = await getHonchoSnapshot();
+    const serialized = JSON.stringify(snapshot);
+
+    assert.equal(snapshot.source, 'live');
+    assert.equal(snapshot.readOnly, true);
+    assert.equal(snapshot.messages.length, 1);
+    assert.equal(snapshot.messages[0].content, '[redacted: live message body hidden without operator authentication]');
+    assert.equal(snapshot.sessions[0].message_count, 1);
+    assert.equal(snapshot.conclusions[0].text, '[redacted: live memory text hidden without operator authentication]');
+    assert.equal(serialized.includes('Raw message body'), false);
+    assert.equal(serialized.includes('Imported memory says'), false);
+    assert.equal(serialized.includes('JWT'), false);
+    assert.equal(serialized.includes('HONCHO_API_KEY'), false);
+    assert.equal(serialized.includes('/root/.hermes'), false);
+    assert.equal(serialized.includes('secret-token-value'), false);
+    assert.equal(serialized.includes('\"raw\"'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
+});
+
+test('sanitizePublicValue removes nested raw fields and private semantic text, not only concrete tokens', () => {
+  const sanitized = sanitizePublicValue({
+    content: 'User said private operator local network memory mentions JWT config state',
+    nested: { raw: { token: 'secret-token-value', child: { content: 'raw context JSON' } } }
+  });
+  const serialized = JSON.stringify(sanitized);
+
+  assert.equal(serialized.includes('private operator'), false);
+  assert.equal(serialized.includes('local network'), false);
+  assert.equal(serialized.includes('JWT'), false);
+  assert.equal(serialized.includes('secret-token-value'), false);
+  assert.equal(serialized.includes('\"raw\"'), false);
 });
 
 test('health payload reports safe build, public mode, and redacted Kanban diagnostics', () => {
