@@ -127,6 +127,25 @@ test('getKanbanRuntimeSnapshot labels single container-mounted DB consistently w
   assert.equal(JSON.stringify(snapshot).includes('/data/hermes/kanban.db'), false);
 });
 
+test('Kanban runtime keeps multiple safe tasks visible per agent without raw task bodies', () => {
+  const runtime = summarizeKanbanRuntimeRows({
+    generatedAt,
+    tasks: [
+      { id: 't_ready_canary', title: 'Ready public canary', assignee: 'jarvis', status: 'ready', created_at: 1779709900 },
+      { id: 't_blocked_canary', title: 'Blocked public canary /root/private note', assignee: 'jarvis', status: 'blocked', created_at: 1779709800 },
+      { id: 't_done_hidden', title: 'Completed task should not render', assignee: 'jarvis', status: 'done', created_at: 1779709700 }
+    ],
+    runs: [],
+    events: []
+  });
+
+  const jarvis = runtime.agents[0];
+  assert.equal(jarvis.assigned_task, 't_ready_canary');
+  assert.deepEqual(jarvis.recent_tasks.map((task) => task.id), ['t_ready_canary', 't_blocked_canary']);
+  assert.equal(JSON.stringify(jarvis.recent_tasks).includes('t_done_hidden'), false);
+  assert.equal(JSON.stringify(jarvis.recent_tasks).includes('/root/private'), false);
+});
+
 test('getKanbanRuntimeSnapshot reports wrong or missing DB diagnostics without raw paths', () => {
   const snapshot = getKanbanRuntimeSnapshot({
     generatedAt,
