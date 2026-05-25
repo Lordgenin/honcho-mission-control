@@ -169,11 +169,12 @@ Then check that the configured workspace id exists and that any required API key
 
 ### Agents do not appear
 
-1. Open `/dashboard` or `/settings` and confirm the app is in live mode and API health is OK.
-2. Open `/workspaces` and `/workspaces/[workspaceId]/peers` to confirm peers are being returned.
-3. Check peer ids. Hermes peers named `hermes` or `hermes-*` should be discovered even with empty metadata.
-4. If your agent peer ids use another naming scheme, add explicit metadata: `type=agent`, `kind=agent`, `role=agent`, or `agent=true`.
-5. If peers are present but agents are still missing, inspect `/context` to see the normalized peer shape and update `lib/data-utils.js` if your Honcho deployment uses a different shape.
+1. Open `/agents` and check whether the main panel says peer discovery is degraded. That state means the peers list request failed; it is different from a valid empty workspace and includes the failed path, status, and error plus retry guidance.
+2. Open `/dashboard` or `/settings` and confirm the app is in live mode and API health is OK.
+3. Open `/workspaces` and `/workspaces/[workspaceId]/peers` to confirm peers are being returned.
+4. Check peer ids. Hermes peers named `hermes` or `hermes-*` should be discovered even with empty metadata.
+5. If your agent peer ids use another naming scheme, add explicit metadata: `type=agent`, `kind=agent`, `role=agent`, or `agent=true`.
+6. If peers are present but agents are still missing, inspect `/context` to see the normalized peer shape and update `lib/data-utils.js` if your Honcho deployment uses a different shape.
 
 ### A search box returns no rows
 
@@ -187,6 +188,20 @@ This is expected. The dashboard is read-only by default. Set `ENABLE_MUTATIONS=t
 
 Check `HONCHO_WORKSPACE_ID`. When set, the dashboard scopes live reads to that workspace. Clear it only if your deployment and API paths support broad multi-workspace reads safely.
 
+## Generic remote deploy helper
+
+`scripts/deploy-remote.sh` is an opt-in helper for operators who already have a private deployment target. It intentionally has no host, username, SSH key, remote path, or workspace defaults in the public repository. Provide all deployment details through environment variables in your private shell, CI secret store, or ops wrapper:
+
+```bash
+DEPLOY_HOST=example-host \
+DEPLOY_USER=deploy-user \
+DEPLOY_SSH_KEY=/path/to/private/key \
+DEPLOY_APP_DIR=/path/to/current/app \
+DEPLOY_INCOMING_DIR=/path/to/incoming/source \
+DEPLOY_COMMAND=/path/to/deploy-command \
+./scripts/deploy-remote.sh
+```
+
 ## Verification commands
 
 Run these before publishing changes:
@@ -196,7 +211,10 @@ npm test
 npm run lint
 npm run typecheck
 npm run build
+npm audit
 ```
+
+Dependency security note: the project pins an npm `overrides.next.postcss` entry so Next's transitive PostCSS copy resolves to a version that includes the GHSA-qx2v-qp2m-jg93 fix. Re-run `npm install` and `npm audit` after dependency changes.
 
 ## Documentation
 

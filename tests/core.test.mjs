@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDashboardEnv, getPublicDashboardEnv } from '../lib/env.js';
-import { discoverAgents, filterCollection } from '../lib/data-utils.js';
+import { discoverAgents, filterCollection, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 
@@ -79,6 +79,76 @@ test('discoverAgents includes live Hermes peers even when metadata is empty', ()
   assert.ok(agents.every((agent) => agent.status === 'discovered'));
 });
 
+test('getPeerDiscoveryFailure detects failed peers list separately from empty peers', () => {
+  assert.equal(getPeerDiscoveryFailure({ status: { ok: true }, peers: [] }), null);
+
+  const failure = getPeerDiscoveryFailure({
+    status: {
+      ok: false,
+      failures: [
+        { path: '/v3/workspaces/workspace-1/sessions/list', status: 200, error: null },
+        { path: '/v3/workspaces/workspace-1/peers/list', status: 503, error: 'http-503' }
+      ]
+    },
+    peers: []
+  });
+
+  assert.deepEqual(failure, { path: '/v3/workspaces/workspace-1/peers/list', status: 503, error: 'http-503' });
+});
+
+test('getSnapshotPosture labels demo, live, and degraded states with next operator action', () => {
+  assert.deepEqual(getSnapshotPosture({ source: 'demo', status: { ok: true }, readOnly: true }).label, 'Demo mode');
+  assert.match(getSnapshotPosture({ source: 'demo', status: { ok: true }, readOnly: true }).nextAction, /Connect live Honcho/i);
+
+  const live = getSnapshotPosture({ source: 'live', status: { ok: true }, readOnly: true });
+  assert.equal(live.label, 'Live and healthy');
+  assert.match(live.summary, /Honcho API is reachable/i);
+
+  const degraded = getSnapshotPosture({ source: 'live-partial', status: { ok: false, failures: [{ path: '/v3/workspaces/w/peers/list', status: 503, error: 'http-503' }] }, readOnly: true });
+  assert.equal(degraded.label, 'Live but degraded');
+  assert.match(degraded.summary, /1 upstream check failed/i);
+  assert.match(degraded.nextAction, /Open Agents/i);
+});
+
+test('session message count labels distinguish API counts from derived counts and unknowns', () => {
+  assert.equal(getSessionMessageCountLabel({ message_count: 4, message_count_source: 'api' }), '4 messages (reported by Honcho)');
+  assert.equal(getSessionMessageCountLabel({ message_count: 2, message_count_source: 'derived' }), '2 messages (derived from loaded messages)');
+  assert.equal(getSessionMessageCountLabel({}), 'message count unavailable (Honcho did not report it)');
+});
+
+test('getHonchoSnapshot reports peers list failures with path, status, and error', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  process.env.HONCHO_BASE_URL = 'http://honcho.example';
+  process.env.HONCHO_WORKSPACE_ID = 'workspace-1';
+  process.env.USE_DEMO_DATA = 'false';
+  process.env.ALLOW_LIVE_PUBLIC_DATA = 'true';
+  globalThis.fetch = async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === '/v3/workspaces/workspace-1/peers/list') {
+      return new Response(JSON.stringify({ error: 'upstream unavailable' }), { status: 503, headers: { 'content-type': 'application/json' } });
+    }
+    const payloads = {
+      '/v3/workspaces/workspace-1/sessions/list': { sessions: [] },
+      '/v3/workspaces/workspace-1/conclusions/list': { conclusions: [] }
+    };
+    return new Response(JSON.stringify(payloads[path] || {}), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const snapshot = await getHonchoSnapshot();
+    const failure = getPeerDiscoveryFailure(snapshot);
+
+    assert.equal(snapshot.source, 'live-partial');
+    assert.equal(snapshot.status.ok, false);
+    assert.deepEqual(failure, { path: '/v3/workspaces/workspace-1/peers/list', status: 503, error: 'http-503' });
+    assert.equal(snapshot.peers.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
+});
+
 test('filterCollection searches nested fields and reports empty matches', () => {
   const filtered = filterCollection([
     { id: 'm1', content: 'Hermes memory conclusion', workspace_id: 'example-workspace' },
@@ -122,6 +192,8 @@ test('getHonchoSnapshot reads v3 workspace-scoped lists and derives session mess
     assert.equal(snapshot.status.ok, true);
     assert.equal(snapshot.sessions[0].status, 'active');
     assert.equal(snapshot.sessions[0].message_count, 1);
+    assert.equal(snapshot.sessions[0].message_count_source, 'derived');
+    assert.equal(getSessionMessageCountLabel(snapshot.sessions[0]), '1 message (derived from loaded messages)');
     assert.equal(snapshot.messages[0].workspace_id, 'workspace-1');
     assert.ok(requested.every((request) => request.method === 'POST'));
     assert.ok(requested.every((request) => request.path.startsWith('/v3/workspaces/workspace-1/')));

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { discoverAgents, statusTone } from '../lib/data-utils.js';
+import { discoverAgents, getAgentActivityLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, statusTone } from '../lib/data-utils.js';
 import { Badge, Button, Card, EmptyState } from './ui';
 import { SearchList } from './search-list';
 import { DataTable } from './data-table';
@@ -21,12 +21,17 @@ function Stat({ label, value, helper }: { label: string; value: any; helper?: st
 }
 
 function StatusBanner({ snapshot }: { snapshot: any }) {
-  const live = snapshot.source?.startsWith('live');
+  const posture = getSnapshotPosture(snapshot);
   return <Card className="mb-6 border-teal-400/20 bg-teal-500/5">
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div><h3 className="text-lg font-semibold">System state</h3><p className="mt-1 text-sm text-slate-400">{snapshot.status?.ok ? 'Honcho responded successfully.' : 'Honcho is unavailable or the dashboard is intentionally using demo data.'}</p></div>
-      <div className="flex flex-wrap gap-2">
-        <Badge className={live ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-400/30 bg-amber-500/10 text-amber-300'}>{snapshot.source || 'loading'} data</Badge>
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <p className="text-sm uppercase tracking-[0.3em] text-teal-300">Current posture</p>
+        <h3 className="mt-2 text-2xl font-semibold">{posture.label}</h3>
+        <p className="mt-2 max-w-3xl text-sm text-slate-300">{posture.summary}</p>
+        <p className="mt-2 max-w-3xl text-sm text-teal-100"><span className="font-semibold">Next:</span> {posture.nextAction}</p>
+      </div>
+      <div className="flex flex-wrap gap-2 lg:justify-end">
+        <Badge className={posture.tone}>{snapshot.source || 'loading'} data</Badge>
         <Badge className={snapshot.status?.ok ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-300'}>{snapshot.status?.ok ? 'API OK' : 'API needs attention'}</Badge>
         <Badge className="border-sky-400/30 bg-sky-500/10 text-sky-300">{snapshot.readOnly === false ? 'mutations enabled' : 'read-only'}</Badge>
       </div>
@@ -50,7 +55,7 @@ export function HomeView({ snapshot }: { snapshot: any }) {
   return <>
     <Header title="Self-hosted Honcho mission control" body="A public-safe dashboard for Hermes memory, discovered agents, sessions, conclusions, webhooks, and performance. Live API data is proxied server-side; demo/live/read-only states are visible before users drill in."/>
     <StatusBanner snapshot={snapshot}/>
-    <div className="grid gap-4 md:grid-cols-4"><Stat label="Workspaces" value={snapshot.workspaces.length}/><Stat label="Agents" value={discoverAgents(snapshot.peers).length} helper="Discovered from metadata or Hermes peer IDs"/><Stat label="Sessions" value={snapshot.sessions.length}/><Stat label="Conclusions" value={snapshot.conclusions.length}/></div>
+    <div className="grid gap-4 md:grid-cols-4"><Stat label="Workspaces connected" value={snapshot.workspaces.length} helper={snapshot.source?.startsWith('live') ? 'Loaded from Honcho API' : 'Demo fixture workspace count'}/><Stat label="Agents discovered" value={discoverAgents(snapshot.peers).length} helper="Metadata agents plus Hermes peer IDs"/><Stat label="Sessions loaded" value={snapshot.sessions.length} helper="Message counts are labeled as reported or derived"/><Stat label="Conclusions loaded" value={snapshot.conclusions.length} helper="Unknown confidence stays n/a"/></div>
     <QuickStart/>
   </>;
 }
@@ -68,7 +73,7 @@ export function WorkspacesView({ snapshot }: { snapshot: any }) { return <><Head
 export function WorkspaceDetail({ snapshot, workspaceId }: { snapshot: any; workspaceId: string }) { const w = snapshot.workspaces.find((item: any) => item.id === workspaceId || item.workspace_id === workspaceId); if (!w) notFound(); const peers = snapshot.peers.filter((p: any) => (p.workspace_id || workspaceId) === workspaceId); const sessions = snapshot.sessions.filter((s: any) => (s.workspace_id || workspaceId) === workspaceId); return <><Header title={w.name || workspaceId} body={w.summary || 'Workspace memory and peer activity.'}/><div className="grid gap-4 md:grid-cols-3"><Stat label="Peers" value={peers.length}/><Stat label="Agents" value={discoverAgents(peers).length}/><Stat label="Sessions" value={sessions.length}/></div><div className="mt-6 flex gap-3"><Link href={'/workspaces/'+workspaceId+'/peers'}><Button>Open peers</Button></Link><Link href={'/workspaces/'+workspaceId+'/sessions'}><Button>Open sessions</Button></Link></div></>; }
 export function PeersView({ snapshot, workspaceId }: { snapshot: any; workspaceId: string }) { const peers = snapshot.peers.filter((p:any)=> (p.workspace_id || workspaceId) === workspaceId); return <><Header title="Peers" body={'Peers in workspace ' + workspaceId}/><SearchList items={peers} placeholder="Search peers..." render={(p) => <Card><Link className="text-lg font-semibold text-teal-200" href={'/workspaces/'+workspaceId+'/peers/'+(p.id || p.peer_id)}>{p.name || p.id}</Link><p className="text-sm text-slate-400">{p.metadata?.role || (String(p.id || '').startsWith('hermes') ? 'Hermes peer' : 'peer')}</p></Card>} /></>; }
 export function PeerDetail({ snapshot, workspaceId, peerId }: { snapshot: any; workspaceId: string; peerId: string }) { const peer = snapshot.peers.find((p:any)=> (p.id === peerId || p.peer_id === peerId) && ((p.workspace_id || workspaceId) === workspaceId)); if (!peer) notFound(); return <><Header title={peer.name || peerId} body="Peer metadata and related memory."/><Card><pre className="overflow-auto text-sm text-slate-300">{JSON.stringify(peer, null, 2)}</pre></Card></>; }
-export function SessionsView({ snapshot, workspaceId }: { snapshot: any; workspaceId: string }) { const sessions = snapshot.sessions.filter((s:any)=> (s.workspace_id || workspaceId) === workspaceId); return <><Header title="Sessions" body={'Sessions in workspace ' + workspaceId}/><SearchList items={sessions} placeholder="Search sessions..." render={(s) => <Card><Link className="text-lg font-semibold text-teal-200" href={'/workspaces/'+workspaceId+'/sessions/'+s.id}>{s.title || s.id}</Link><p className="text-sm text-slate-400">{Number.isFinite(Number(s.message_count)) ? Number(s.message_count) : 'unavailable'} messages · {s.status || 'available'}</p></Card>} /></>; }
+export function SessionsView({ snapshot, workspaceId }: { snapshot: any; workspaceId: string }) { const sessions = snapshot.sessions.filter((s:any)=> (s.workspace_id || workspaceId) === workspaceId); return <><Header title="Sessions" body={'Sessions in workspace ' + workspaceId + '. Message totals are labeled as reported by Honcho or derived from loaded messages.'}/><SearchList items={sessions} placeholder="Search sessions..." render={(s) => <Card><Link className="text-lg font-semibold text-teal-200" href={'/workspaces/'+workspaceId+'/sessions/'+s.id}>{s.title || s.id}</Link><p className="text-sm text-slate-400">{getSessionMessageCountLabel(s)} · {s.status || 'status unavailable'}</p></Card>} /></>; }
 export function SessionDetail({ snapshot, workspaceId, sessionId }: { snapshot: any; workspaceId: string; sessionId: string }) { const session = snapshot.sessions.find((s:any)=> s.id === sessionId); if (!session) notFound(); const messages = snapshot.messages.filter((m:any)=> m.session_id === sessionId); return <><Header title={session.title || sessionId} body="Session transcript and state."/><MessageList messages={messages}/></>; }
 export function MessageList({ messages }: { messages: any[] }) { return messages.length ? <div className="space-y-3">{messages.map((m) => <Card key={m.id}><div className="flex items-center justify-between"><Badge className="border-slate-400/20 bg-slate-500/10 text-slate-300">{m.role || m.peer_id || 'message'}</Badge><span className="text-xs text-slate-500">{m.created_at || 'no timestamp'}</span></div><p className="mt-3 text-slate-200">{m.content || m.text || 'No content returned.'}</p></Card>)}</div> : <EmptyState title="No messages" body="Honcho returned no messages for this view. If this is first-run setup, create a session or confirm the selected workspace."/>; }
 export function MessagesView({ snapshot }: { snapshot: any }) { return <><Header title="Messages" body="Searchable memory message stream."/><SearchList items={snapshot.messages} placeholder="Search messages..." render={(m) => <Card><p>{m.content || m.text || 'No content returned.'}</p><p className="mt-2 text-xs text-slate-500">{m.workspace_id || 'workspace unknown'} / {m.session_id || 'session unknown'}</p></Card>} /></>; }
@@ -104,5 +109,23 @@ export function PerformanceView({ snapshot }: { snapshot: any }) {
 }
 
 export function SettingsView({ snapshot }: { snapshot: any }) { return <><Header title="Settings" body="Runtime environment and deployment posture without exposing server-side secrets."/><Card><div className="grid gap-3 text-sm"><p>HONCHO_CONNECTION: {snapshot.env.honchoConnection || 'configured server-side'}</p><p>HONCHO_WORKSPACE_ID: {snapshot.env.HONCHO_WORKSPACE_ID || '(all)'}</p><p>USE_DEMO_DATA: {String(snapshot.env.USE_DEMO_DATA)}</p><p>ALLOW_LIVE_PUBLIC_DATA: {String(snapshot.env.liveDataAllowed)}</p><p>ENABLE_MUTATIONS: {String(snapshot.env.ENABLE_MUTATIONS)}</p><p>API_KEY_CONFIGURED: {String(Boolean(snapshot.env.hasHonchoApiKey))}</p></div></Card></>; }
-export function AgentsView({ snapshot }: { snapshot: any }) { const agents = discoverAgents(snapshot.peers); return <><Header title="Hermes agents" body="Agents are discovered from explicit peer metadata or live Hermes peer IDs such as hermes-jarvis, so real self-hosted workspaces still render even when metadata is empty."/>{agents.length ? <><div className="mb-4 grid gap-4 md:grid-cols-3"><Stat label="Discovered agents" value={agents.length}/><Stat label="Live peers" value={snapshot.peers.length}/><Stat label="With capabilities" value={agents.filter((a:any)=>a.capabilities.length).length}/></div><div className="grid gap-4 md:grid-cols-2">{agents.map((a:any) => <Card key={a.id}><div className="flex items-center justify-between gap-3"><h3 className="text-xl font-semibold">{a.name}</h3><Badge className={statusTone(a.status)}>{a.status}</Badge></div><p className="mt-1 text-slate-400">{a.role} · {a.team}{a.inferred ? ' · inferred from peer ID' : ''}</p><p className="mt-3 text-sm">{a.current_goal || 'No current goal reported yet.'}</p><p className="mt-2 text-xs text-slate-500">Task: {a.assigned_task || 'none'} · last seen: {a.last_seen || a.heartbeat || 'unknown'}</p><div className="mt-3 flex flex-wrap gap-2">{a.capabilities.length ? a.capabilities.map((cap:string) => <Badge className="border-slate-400/20 bg-slate-500/10 text-slate-300" key={cap}>{cap}</Badge>) : <Badge className="border-slate-400/20 bg-slate-500/10 text-slate-300">capabilities not reported</Badge>}</div></Card>)}</div></> : <EmptyState title="No agents discovered" body="No Hermes peer IDs or agent metadata were found. Confirm the Honcho workspace has peers, then add metadata type=agent or use Hermes peer IDs like hermes-jarvis."/>}</>; }
+function PeerDiscoveryFailure({ failure }: { failure: any }) {
+  return <Card className="border-rose-400/40 bg-rose-500/10">
+    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <div>
+        <p className="text-sm uppercase tracking-[0.25em] text-rose-300">Peer discovery degraded</p>
+        <h3 className="mt-2 text-2xl font-semibold text-rose-100">Could not load Honcho peers</h3>
+        <p className="mt-2 max-w-3xl text-sm text-rose-100/80">The Agents page is not empty: Honcho peer discovery failed. Refresh this page after checking the upstream Honcho service, workspace id, API key, and network path.</p>
+        <dl className="mt-4 grid gap-2 text-sm text-rose-50/80 md:grid-cols-3">
+          <div><dt className="text-rose-200/70">Path</dt><dd className="break-all font-mono">{failure.path || 'peers/list'}</dd></div>
+          <div><dt className="text-rose-200/70">Status</dt><dd>{failure.status ?? 'unknown'}</dd></div>
+          <div><dt className="text-rose-200/70">Error</dt><dd>{failure.error || 'unknown'}</dd></div>
+        </dl>
+      </div>
+      <Link href="/agents"><Button>Retry / refresh</Button></Link>
+    </div>
+  </Card>;
+}
+
+export function AgentsView({ snapshot }: { snapshot: any }) { const agents = discoverAgents(snapshot.peers); const peerFailure = getPeerDiscoveryFailure(snapshot); return <><Header title="Hermes agents" body="Agents are discovered from explicit peer metadata or live Hermes peer IDs such as hermes-jarvis. Activity language only uses heartbeat or timestamp fields Honcho actually returned."/>{peerFailure ? <PeerDiscoveryFailure failure={peerFailure}/> : agents.length ? <><div className="mb-4 grid gap-4 md:grid-cols-3"><Stat label="Discovered agents" value={agents.length} helper="Metadata agents plus Hermes peer IDs"/><Stat label="Live peers loaded" value={snapshot.peers.length} helper="Raw peers returned by Honcho"/><Stat label="Activity reported" value={agents.filter((a:any)=>a.last_seen || a.heartbeat).length} helper="Heartbeat or last_seen present"/></div><div className="grid gap-4 md:grid-cols-2">{agents.map((a:any) => <Card key={a.id}><div className="flex items-center justify-between gap-3"><h3 className="text-xl font-semibold">{a.name}</h3><Badge className={statusTone(a.status)}>{a.status}</Badge></div><p className="mt-1 text-slate-400">{a.role} · {a.team}{a.inferred ? ' · inferred from peer ID' : ''}</p><p className="mt-3 text-sm">{a.current_goal || 'No current goal reported by Honcho.'}</p><p className="mt-2 text-xs text-slate-500">Task: {a.assigned_task || 'not reported'} · {getAgentActivityLabel(a)}</p><div className="mt-3 flex flex-wrap gap-2">{a.capabilities.length ? a.capabilities.map((cap:string) => <Badge className="border-slate-400/20 bg-slate-500/10 text-slate-300" key={cap}>{cap}</Badge>) : <Badge className="border-slate-400/20 bg-slate-500/10 text-slate-300">capabilities not reported</Badge>}</div></Card>)}</div></> : <EmptyState title="No agents discovered" body="Honcho peer discovery succeeded but no Hermes peer IDs or agent metadata were found. Add metadata type=agent or use Hermes peer IDs like hermes-jarvis."/>}</>; }
 export function TableView({ title, body, data }: { title: string; body: string; data: any[] }) { return <><Header title={title} body={body}/><DataTable data={data} columns={[{ accessorKey: 'id', header: 'ID' }, { accessorFn: (row) => row.name || row.title || row.status || row.role || '-', header: 'Summary' }, { accessorFn: (row) => row.workspace_id || '-', header: 'Workspace' }]}/></>; }
