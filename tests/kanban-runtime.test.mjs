@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { discoverAgents } from '../lib/data-utils.js';
-import { buildDegradedKanbanRuntime, summarizeKanbanRuntimeRows } from '../lib/kanban-runtime.js';
+import { buildDegradedKanbanRuntime, getKanbanRuntimeSnapshot, summarizeKanbanRuntimeRows } from '../lib/kanban-runtime.js';
 
 const generatedAt = '2026-05-25T12:00:00.000Z';
 
@@ -76,4 +76,46 @@ test('discoverAgents prefers Kanban runtime for goal/activity and labels Honcho 
   assert.equal(jarvis.metadata_source, 'honcho-peer-enrichment');
   assert.equal(weaver.status, 'unknown');
   assert.equal(weaver.current_goal_source, 'fallback-not-reported');
+});
+
+test('getKanbanRuntimeSnapshot reads configured DB list before legacy defaults and labels source without paths', () => {
+  const calls = [];
+  const snapshot = getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: { HERMES_KANBAN_DBS: '/private/agent-company.db:/private/empty.db', HERMES_KANBAN_DB: '/wrong/default.db' },
+    execFileSyncImpl: (_cmd, args) => {
+      calls.push(args.at(-1));
+      if (args.at(-1).endsWith('agent-company.db')) {
+        return JSON.stringify({
+          tasks: [{ id: 't_live', title: 'Live board task', assignee: 'jarvis', status: 'running', started_at: 1779709800 }],
+          runs: [{ task_id: 't_live', profile: 'jarvis', status: 'running', last_heartbeat_at: 1779709980, started_at: 1779709800 }],
+          events: []
+        });
+      }
+      return JSON.stringify({ tasks: [], runs: [], events: [] });
+    }
+  });
+
+  assert.deepEqual(calls, ['/private/agent-company.db', '/private/empty.db']);
+  assert.equal(snapshot.available, true);
+  assert.equal(snapshot.agents[0].assigned_task, 't_live');
+  assert.equal(snapshot.source, 'hermes-kanban:configured-list');
+  assert.equal(snapshot.sources.length, 2);
+  assert.equal(snapshot.sources[0].label, 'configured-db-1');
+  assert.equal(JSON.stringify(snapshot).includes('/private/'), false);
+});
+
+test('getKanbanRuntimeSnapshot reports wrong or missing DB diagnostics without raw paths', () => {
+  const snapshot = getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: { HERMES_KANBAN_DBS: '/private/missing.db' },
+    execFileSyncImpl: () => { throw new Error('unable to open database file /private/missing.db'); }
+  });
+
+  assert.equal(snapshot.available, false);
+  assert.equal(snapshot.state, 'degraded');
+  assert.equal(snapshot.sources[0].state, 'degraded');
+  assert.equal(snapshot.sources[0].label, 'configured-db-1');
+  assert.match(snapshot.reason, /Kanban runtime unavailable/);
+  assert.equal(JSON.stringify(snapshot).includes('/private/missing.db'), false);
 });

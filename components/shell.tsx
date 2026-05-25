@@ -1,8 +1,8 @@
 'use client';
 
-import type { ComponentType, ReactNode } from 'react';
+import { useEffect, type ComponentType, type ReactNode } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Activity, Bot, Brain, Gauge, Home, MessageSquare, Network, Settings, TestTube, Webhook } from 'lucide-react';
 import { getSnapshotPosture } from '../lib/data-utils.js';
 import { Badge, cn } from './ui';
@@ -16,6 +16,24 @@ const navGroups: { label: string; items: NavItem[] }[] = [
 ];
 const navItems = navGroups.flatMap((group) => group.items);
 
+function RuntimeRefresh({ intervalMs = 30000 }: { intervalMs?: number }) {
+  const router = useRouter();
+  useEffect(() => {
+    const refresh = () => router.refresh();
+    const interval = window.setInterval(refresh, intervalMs);
+    const onFocus = () => refresh();
+    const onVisibility = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [intervalMs, router]);
+  return null;
+}
+
 export function Shell({ children, snapshot }: { children: ReactNode; snapshot?: any }) {
   const name = snapshot?.env?.NEXT_PUBLIC_DASHBOARD_NAME || 'Honcho Mission Control';
   const pathname = usePathname();
@@ -23,6 +41,7 @@ export function Shell({ children, snapshot }: { children: ReactNode; snapshot?: 
   const posture = getSnapshotPosture(snapshot || {});
 
   return <div className="min-h-screen">
+    <RuntimeRefresh />
     <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-border bg-slate-950/80 p-5 backdrop-blur lg:block">
       <div className="mb-8">
         <p className="text-xs uppercase tracking-[0.4em] text-teal-300">Hermes</p>

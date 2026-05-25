@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { discoverAgents, getAgentActivityLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, statusTone } from '../lib/data-utils.js';
+import { discoverAgents, getAgentActivityLabel, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, statusTone } from '../lib/data-utils.js';
 import { Badge, Button, Card, EmptyState } from './ui';
 import { SearchList } from './search-list';
 import { DataTable } from './data-table';
@@ -22,6 +22,7 @@ function Stat({ label, value, helper }: { label: string; value: any; helper?: st
 
 function StatusBanner({ snapshot }: { snapshot: any }) {
   const posture = getSnapshotPosture(snapshot);
+  const subsystemStatuses = getSubsystemStatuses(snapshot);
   return <Card className="mb-6 border-teal-400/20 bg-teal-500/5">
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
       <div>
@@ -29,10 +30,15 @@ function StatusBanner({ snapshot }: { snapshot: any }) {
         <h3 className="mt-2 text-2xl font-semibold">{posture.label}</h3>
         <p className="mt-2 max-w-3xl text-sm text-slate-300">{posture.summary}</p>
         <p className="mt-2 max-w-3xl text-sm text-teal-100"><span className="font-semibold">Next:</span> {posture.nextAction}</p>
+        <div className="mt-4 grid gap-2 text-xs text-slate-300 md:grid-cols-5">
+          {subsystemStatuses.map((item: any) => <div className="rounded-xl border border-border bg-slate-950/40 p-2" key={item.id}><p className="font-semibold text-slate-100">{item.label}</p><p className="mt-1 uppercase tracking-wide text-slate-400">{item.state}</p></div>)}
+        </div>
       </div>
       <div className="flex flex-wrap gap-2 lg:justify-end">
         <Badge className={posture.tone}>{snapshot.source || 'loading'} data</Badge>
-        <Badge className={snapshot.status?.ok ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-300'}>{snapshot.status?.ok ? 'API OK' : 'API needs attention'}</Badge>
+        <Badge className={snapshot.status?.ok ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-300'}>{snapshot.status?.ok ? 'Honcho OK' : 'Honcho needs attention'}</Badge>
+        <Badge className={snapshot.kanban?.available === false ? 'border-amber-400/30 bg-amber-500/10 text-amber-300' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'}>Kanban {snapshot.kanban?.state || 'unknown'}</Badge>
+        <Badge className="border-sky-400/30 bg-sky-500/10 text-sky-300">{snapshot.env?.liveDataAllowed ? 'operator live data' : 'public privacy protected'}</Badge>
         <Badge className="border-sky-400/30 bg-sky-500/10 text-sky-300">{snapshot.readOnly === false ? 'mutations enabled' : 'read-only'}</Badge>
       </div>
     </div>
@@ -55,7 +61,7 @@ export function HomeView({ snapshot }: { snapshot: any }) {
   return <>
     <Header title="Self-hosted Honcho mission control" body="A public-safe dashboard for Hermes memory, discovered agents, sessions, conclusions, webhooks, and performance. Live API data is proxied server-side; demo/live/read-only states are visible before users drill in."/>
     <StatusBanner snapshot={snapshot}/>
-    <div className="grid gap-4 md:grid-cols-4"><Stat label="Workspaces connected" value={snapshot.workspaces.length} helper={snapshot.source?.startsWith('live') ? 'Loaded from Honcho API' : 'Demo fixture workspace count'}/><Stat label="Agents discovered" value={discoverAgents(snapshot.peers, snapshot.kanban).length} helper="Metadata agents plus Hermes peer IDs"/><Stat label="Sessions loaded" value={snapshot.sessions.length} helper="Message counts are labeled as reported or derived"/><Stat label="Conclusions loaded" value={snapshot.conclusions.length} helper="Unknown confidence stays n/a"/></div>
+    <div className="grid gap-4 md:grid-cols-4"><Stat label="Workspaces connected" value={snapshot.workspaces.length} helper={snapshot.source?.startsWith('live') ? 'Loaded from Honcho API' : 'Demo fixture workspace count'}/><Stat label="Agents discovered" value={discoverAgents(snapshot.peers, snapshot.kanban).length} helper="Metadata agents plus Hermes peer IDs"/><Stat label="Sessions loaded" value={snapshot.sessions.length} helper="Message counts are labeled as reported or derived"/><Stat label="Conclusions loaded" value={snapshot.conclusions.length} helper="Confidence shows provenance/unavailable reason"/></div>
     <QuickStart/>
   </>;
 }
@@ -77,7 +83,7 @@ export function SessionsView({ snapshot, workspaceId }: { snapshot: any; workspa
 export function SessionDetail({ snapshot, workspaceId, sessionId }: { snapshot: any; workspaceId: string; sessionId: string }) { const session = snapshot.sessions.find((s:any)=> s.id === sessionId); if (!session) notFound(); const messages = snapshot.messages.filter((m:any)=> m.session_id === sessionId); return <><Header title={session.title || sessionId} body="Session transcript and state."/><MessageList messages={messages}/></>; }
 export function MessageList({ messages }: { messages: any[] }) { return messages.length ? <div className="space-y-3">{messages.map((m) => <Card key={m.id}><div className="flex items-center justify-between"><Badge className="border-slate-400/20 bg-slate-500/10 text-slate-300">{m.role || m.peer_id || 'message'}</Badge><span className="text-xs text-slate-500">{m.created_at || 'no timestamp'}</span></div><p className="mt-3 text-slate-200">{m.content || m.text || 'No content returned.'}</p></Card>)}</div> : <EmptyState title="No messages" body="Honcho returned no messages for this view. If this is first-run setup, create a session or confirm the selected workspace."/>; }
 export function MessagesView({ snapshot }: { snapshot: any }) { return <><Header title="Messages" body="Searchable memory message stream."/><SearchList items={snapshot.messages} placeholder="Search messages..." render={(m) => <Card><p>{m.content || m.text || 'No content returned.'}</p><p className="mt-2 text-xs text-slate-500">{m.workspace_id || 'workspace unknown'} / {m.session_id || 'session unknown'}</p></Card>} /></>; }
-export function ConclusionsView({ snapshot }: { snapshot: any }) { return <><Header title="Conclusions" body="Durable Honcho conclusions and confidence signals."/><SearchList items={snapshot.conclusions} placeholder="Search conclusions..." render={(c) => <Card><p>{c.text || c.content || 'No conclusion text returned.'}</p><p className="mt-2 text-xs text-slate-500">confidence {c.confidence ?? 'n/a'}</p></Card>} /></>; }
+export function ConclusionsView({ snapshot }: { snapshot: any }) { return <><Header title="Conclusions" body="Durable Honcho conclusions with explicit confidence and provenance semantics. Missing confidence is labeled unavailable with evidence count/source instead of a placeholder."/><SearchList items={snapshot.conclusions} placeholder="Search conclusions..." render={(c) => <Card><p>{c.text || c.content || 'No conclusion text returned.'}</p><p className="mt-2 text-xs text-slate-500">{getConclusionProvenanceLabel(c)}</p></Card>} /></>; }
 export function ContextView({ snapshot }: { snapshot: any }) { return <><Header title="Context" body="Combined workspace, peer, message, and conclusion context for operators."/><Card><pre className="max-h-[620px] overflow-auto text-xs text-slate-300">{JSON.stringify({ workspaces: snapshot.workspaces, agents: discoverAgents(snapshot.peers, snapshot.kanban), recent_messages: snapshot.messages.slice(0, 10), conclusions: snapshot.conclusions }, null, 2)}</pre></Card></>; }
 export function ApiPlaygroundView({ snapshot }: { snapshot: any }) { return <><Header title="API playground" body="Read-only endpoint explorer. Browser requests target the Next.js server proxy, never Honcho directly."/><Card><p className="text-slate-300">Try server proxy paths such as <code>/api/honcho/v3/workspaces/list</code>, <code>/api/honcho/v3/workspaces/{'{workspaceId}'}/peers/list</code>, or <code>/api/honcho/v3/workspaces/{'{workspaceId}'}/sessions/list</code>. Unsupported non-v3 paths are not proxied.</p><Button className="mt-4" disabled={snapshot.readOnly}>Mutating requests disabled unless ENABLE_MUTATIONS=true</Button></Card></>; }
 export function WebhooksView({ snapshot }: { snapshot: any }) { return <><Header title="Webhooks" body="Webhook configuration preview with read-only safeguards."/><SearchList items={snapshot.webhooks} placeholder="Search webhooks..." render={(w) => <Card><p className="font-semibold">{w.event}</p><p className="text-sm text-slate-400">{w.url}</p><Button className="mt-3" disabled={snapshot.readOnly}>Send test delivery</Button></Card>} /></>; }

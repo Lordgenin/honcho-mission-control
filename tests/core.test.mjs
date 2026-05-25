@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDashboardEnv, getPublicDashboardEnv } from '../lib/env.js';
-import { discoverAgents, filterCollection, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture } from '../lib/data-utils.js';
+import { discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 
@@ -101,7 +101,7 @@ test('getSnapshotPosture labels demo, live, and degraded states with next operat
   assert.match(getSnapshotPosture({ source: 'demo', status: { ok: true }, readOnly: true }).nextAction, /Connect live Honcho/i);
 
   const live = getSnapshotPosture({ source: 'live', status: { ok: true }, readOnly: true });
-  assert.equal(live.label, 'Live and healthy');
+  assert.equal(live.label, 'Honcho live OK');
   assert.match(live.summary, /Honcho API is reachable/i);
 
   const degraded = getSnapshotPosture({ source: 'live-partial', status: { ok: false, failures: [{ path: '/v3/workspaces/w/peers/list', status: 503, error: 'http-503' }] }, readOnly: true });
@@ -156,6 +156,44 @@ test('filterCollection searches nested fields and reports empty matches', () => 
   ], 'webhook');
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, 'm2');
+});
+
+test('normalizeConclusion exposes confidence provenance without inventing numeric confidence', () => {
+  const missing = normalizeConclusion({ id: 'c1', text: 'Use explicit provenance', evidence_count: 3, created_at: '2026-05-25T00:00:00Z' }, 'workspace-1');
+  assert.equal(missing.confidence, null);
+  assert.equal(missing.confidence_status, 'unavailable');
+  assert.equal(missing.confidence_reason, 'Honcho did not report confidence');
+  assert.equal(missing.evidence_count, 3);
+  assert.equal(missing.provenance.source, 'honcho-conclusion');
+  assert.match(getConclusionProvenanceLabel(missing), /confidence unavailable/i);
+  assert.match(getConclusionProvenanceLabel(missing), /3 evidence item/i);
+
+  const reported = normalizeConclusion({ id: 'c2', content: 'Reported confidence', confidence: 0.7, updated_at: '2026-05-25T00:10:00Z' }, 'workspace-1');
+  assert.equal(reported.confidence, 0.7);
+  assert.equal(reported.confidence_status, 'reported');
+  assert.match(getConclusionProvenanceLabel(reported), /reported by Honcho/);
+});
+
+test('getSubsystemStatuses separates Honcho, Kanban, gateway, browser, and privacy posture', () => {
+  const statuses = getSubsystemStatuses({
+    source: 'live-partial',
+    status: { ok: false, failures: [{ path: '/v3/workspaces/w/peers/list', status: 503, error: 'http-503' }] },
+    kanban: { available: false, state: 'degraded', source: 'hermes-kanban:configured-list' },
+    performance: { freshness: { state: 'stale' } },
+    env: { liveDataAllowed: false }
+  });
+
+  assert.deepEqual(statuses.map((status) => status.id), ['honcho', 'kanban', 'gateway-dispatcher', 'browser-runtime', 'public-privacy']);
+  assert.equal(statuses.find((status) => status.id === 'honcho').state, 'degraded');
+  assert.equal(statuses.find((status) => status.id === 'kanban').state, 'degraded');
+  assert.equal(statuses.find((status) => status.id === 'public-privacy').state, 'protected');
+});
+
+test('shell includes a client refresh hook for polling dynamic runtime state', async () => {
+  const source = await import('node:fs/promises').then((fs) => fs.readFile(new URL('../components/shell.tsx', import.meta.url), 'utf8'));
+  assert.match(source, /router\.refresh\(\)/);
+  assert.match(source, /visibilitychange/);
+  assert.match(source, /setInterval/);
 });
 
 test('getDemoSnapshot includes Hermes-like operational data and clear demo mode', () => {
