@@ -65,6 +65,20 @@ test('discoverAgents returns peers marked as agent without hardcoding teams', ()
   assert.deepEqual(agents.map((agent) => agent.team), ['build', 'review']);
 });
 
+test('discoverAgents includes live Hermes peers even when metadata is empty', () => {
+  const agents = discoverAgents([
+    { id: 'user', metadata: {}, configuration: {}, workspace_id: 'agent-company' },
+    { id: 'hermes', metadata: {}, configuration: {}, workspace_id: 'agent-company' },
+    { id: 'hermes-jarvis', metadata: {}, configuration: {}, workspace_id: 'agent-company' },
+    { id: 'hermes-weaver', metadata: {}, configuration: {}, workspace_id: 'agent-company' }
+  ]);
+
+  assert.deepEqual(agents.map((agent) => agent.id), ['hermes', 'hermes-jarvis', 'hermes-weaver']);
+  assert.deepEqual(agents.map((agent) => agent.name), ['Hermes', 'Jarvis', 'Weaver']);
+  assert.ok(agents.every((agent) => agent.team === 'hermes'));
+  assert.ok(agents.every((agent) => agent.status === 'discovered'));
+});
+
 test('filterCollection searches nested fields and reports empty matches', () => {
   const filtered = filterCollection([
     { id: 'm1', content: 'Hermes memory conclusion', workspace_id: 'example-workspace' },
