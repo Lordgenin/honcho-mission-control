@@ -2,17 +2,9 @@ services:
   honcho-mission-control:
     build: .
     ports: ["3000:3000"]
-    environment:
-      HONCHO_BASE_URL: "${HONCHO_BASE_URL:-http://localhost:8000}"
-      HONCHO_API_KEY: "${HONCHO_API_KEY:-}"
-      HONCHO_WORKSPACE_ID: "${HONCHO_WORKSPACE_ID:-example-workspace}"
-      ENABLE_MUTATIONS: "${ENABLE_MUTATIONS:-false}"
-      USE_DEMO_DATA: "${USE_DEMO_DATA:-true}"
-      ALLOW_LIVE_PUBLIC_DATA: "${ALLOW_LIVE_PUBLIC_DATA:-false}"
-      HERMES_KANBAN_DBS: "${HERMES_KANBAN_DBS:-/data/hermes/kanban.db}"
-      HERMES_KANBAN_DB: "${HERMES_KANBAN_DB:-/data/hermes/kanban.db}"
-      HERMES_KANBAN_DATABASE: "${HERMES_KANBAN_DATABASE:-/data/hermes/kanban.db}"
-      NEXT_PUBLIC_DASHBOARD_NAME: "${NEXT_PUBLIC_DASHBOARD_NAME:-Honcho Mission Control}"
+    env_file:
+      - path: ./runtime/dashboard.env
+        required: false
     volumes:
       - "${HERMES_KANBAN_SNAPSHOT_HOST_DB:-./runtime/kanban.db}:/data/hermes/kanban.db:ro"
     restart: unless-stopped

@@ -65,11 +65,13 @@ TMPDIR="/tmp/honcho-mission-control-src-$REV-$$"
 mkdir -p "$TMPDIR"
 tar -xzf "$REMOTE_ARCHIVE" -C "$TMPDIR"
 rm -f "$REMOTE_ARCHIVE"
-# Preserve existing private deployment env if present, otherwise use source env/example if available.
-if [ -r "$REMOTE_APP/.env" ]; then
-  cp "$REMOTE_APP/.env" "$TMPDIR/.env"
-elif [ -r "$REMOTE_INCOMING/.env" ]; then
+# Prefer an operator-prepared incoming .env so live/rollback candidates copied to
+# REMOTE_INCOMING drive Docker Compose on the next deploy. Fall back to the
+# currently deployed private env only when no prepared incoming env exists.
+if [ -r "$REMOTE_INCOMING/.env" ]; then
   cp "$REMOTE_INCOMING/.env" "$TMPDIR/.env"
+elif [ -r "$REMOTE_APP/.env" ]; then
+  cp "$REMOTE_APP/.env" "$TMPDIR/.env"
 elif [ -f "$TMPDIR/.env.example" ]; then
   cp "$TMPDIR/.env.example" "$TMPDIR/.env"
 else
@@ -112,7 +114,10 @@ if [ -n "$REMOTE_KANBAN_DB" ] && [ -r "$REMOTE_KANBAN_DB" ]; then
 else
   set_default_kv HERMES_KANBAN_HOST_DB '' "$TMPDIR/.env"
 fi
-find "$REMOTE_INCOMING" -mindepth 1 ! -name '.env' -exec rm -rf {} +
+mkdir -p "$TMPDIR/runtime"
+cp "$TMPDIR/.env" "$TMPDIR/runtime/dashboard.env"
+chmod 600 "$TMPDIR/runtime/dashboard.env"
+find "$REMOTE_INCOMING" -mindepth 1 ! -name '.env' ! -name '.env.*' -exec rm -rf {} +
 cp -a "$TMPDIR"/. "$REMOTE_INCOMING"/
 printf 'main@%s\n' "$REV" > "$REMOTE_INCOMING/.source-revision"
 rm -rf "$TMPDIR"

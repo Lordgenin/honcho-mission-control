@@ -240,7 +240,7 @@ The Performance page reports dashboard-to-Honcho request telemetry collected dur
 
 ## Generic remote deploy helper
 
-`scripts/deploy-remote.sh` is an opt-in helper for operators who already have a private deployment target. It intentionally has no host, username, SSH key, remote path, workspace, or Kanban DB defaults in the public repository. Provide all deployment details through environment variables in your private shell, CI secret store, or ops wrapper:
+`scripts/deploy-remote.sh` is an opt-in helper for operators who already have a private deployment target. It intentionally has no host, username, SSH key, remote path, workspace, or Kanban DB defaults in the public repository. Provide all deployment details through environment variables in your private shell, CI secret store, or ops wrapper. When the remote incoming directory already contains a prepared `.env`, that file takes precedence over the currently deployed app `.env` so operator-selected live/rollback candidates drive the next Docker Compose runtime; if no prepared incoming `.env` exists, the helper preserves the currently deployed private env before falling back to `.env.example`/safe defaults. The helper also writes the selected env to `runtime/dashboard.env`, a non-dotfile `env_file` consumed by Compose so deploy helpers that copy only normal source paths still pass prepared env values into the container. The incoming cleanup keeps `.env.*` rollback candidate files in place while replacing source files.
 
 ```bash
 DEPLOY_HOST=example-host \
