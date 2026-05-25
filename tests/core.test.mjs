@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDashboardEnv, getPublicDashboardEnv } from '../lib/env.js';
-import { discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion, sanitizePublicValue } from '../lib/data-utils.js';
+import { createRouteScopedSnapshot, discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion, sanitizePublicValue } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 import { getHealthPayload } from '../lib/health.js';
@@ -301,6 +301,36 @@ test('sanitizePublicValue removes nested raw fields and private semantic text, n
   assert.equal(serialized.includes('JWT'), false);
   assert.equal(serialized.includes('secret-token-value'), false);
   assert.equal(serialized.includes('\"raw\"'), false);
+});
+
+test('createRouteScopedSnapshot keeps non-message routes from serializing broad live payloads', () => {
+  const source = {
+    source: 'live',
+    readOnly: true,
+    env: { liveDataAllowed: true },
+    status: { ok: true },
+    generated_at: '2026-05-25T00:00:00Z',
+    workspaces: [{ id: 'agent-company', summary: 'Safe workspace summary' }],
+    peers: [{ id: 'hermes-jarvis', metadata: { type: 'agent', role: 'engineering', raw: { token: 'secret-token-value' } } }],
+    sessions: [{ id: 'session-1', title: 'Private imported memory session', message_count: 99 }],
+    messages: Array.from({ length: 80 }, (_, index) => ({ id: `message-${index}`, content: `private raw Honcho memory payload ${index} mentions JWT and /root/.hermes/config.yaml` })),
+    conclusions: [{ id: 'conclusion-1', text: 'Imported private project conclusion mentions HONCHO_API_KEY and local network' }],
+    kanban: { available: true, state: 'available', source: 'container-mounted-db', agents: [{ id: 'hermes-jarvis', assigned_task: 't_private', current_goal: 'private project raw payload' }] },
+    webhooks: [{ event: 'message.created', url: 'http://127.0.0.1:8000/hook' }]
+  };
+
+  for (const route of ['home', 'agents', 'workspaces', 'performance', 'api-playground', 'webhooks']) {
+    const scoped = createRouteScopedSnapshot(source, route);
+    const serialized = JSON.stringify(scoped);
+    assert.equal(serialized.includes('private raw Honcho memory payload'), false, `${route} serialized message bodies`);
+    assert.equal(serialized.includes('/root/.hermes'), false, `${route} serialized local paths`);
+    assert.equal(serialized.includes('HONCHO_API_KEY'), false, `${route} serialized env labels`);
+    assert.ok(serialized.length < JSON.stringify(source).length, `${route} should be smaller than the broad snapshot`);
+  }
+
+  const messages = createRouteScopedSnapshot(source, 'messages');
+  assert.equal(messages.messages.length, 50);
+  assert.equal(JSON.stringify(messages).includes('secret-token-value'), false);
 });
 
 test('health payload reports safe build, public mode, and redacted Kanban diagnostics', () => {
