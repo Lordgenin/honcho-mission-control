@@ -51,7 +51,7 @@ function QuickStart() {
   return <Card className="mt-6">
     <h3 className="text-xl font-semibold">First-run checklist</h3>
     <ol className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-3">
-      <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">1.</span> Public Vercel starts as sanitized demo/protected preview data, not an unauthenticated live operator console.</li>
+      <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">1.</span> Public previews start as sanitized demo/protected preview data, not unauthenticated live operator consoles.</li>
       <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">2.</span> Keep browser-visible settings documentation-safe: placeholders only, no private origins, paths, credentials, or raw memory.</li>
       <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">3.</span> Self-host behind your own access boundary before enabling scoped live-private reads; writes require a separate reviewed mutation gate.</li>
     </ol>
