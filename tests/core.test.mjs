@@ -566,3 +566,46 @@ test('health payload lets explicit live mode override stale legacy Kanban snapsh
   assert.equal(payload.kanban.snapshot_reason, undefined);
   assert.equal(JSON.stringify(payload).includes('/private/stale-copied-kanban.db'), false);
 });
+
+test('health payload exposes safe Kanban freshness without raw task or DB data', () => {
+  const payload = getHealthPayload({
+    now: new Date('2026-05-25T12:00:00Z'),
+    envSource: {
+      HERMES_KANBAN_DBS: '/data/hermes/kanban.db',
+      HERMES_KANBAN_DB: '/data/hermes/kanban.db',
+      HERMES_KANBAN_SOURCE_MODE: 'live'
+    },
+    canReadContainerKanbanDbImpl: () => true,
+    getKanbanRuntimeSnapshotImpl: ({ env, generatedAt }) => {
+      assert.equal(env.HERMES_KANBAN_DBS, '/data/hermes/kanban.db');
+      assert.equal(generatedAt, '2026-05-25T12:00:00.000Z');
+      return {
+        available: true,
+        state: 'available',
+        freshness: {
+          latest_observed_at: '2026-05-25T11:59:30.000Z',
+          latest_task_at: '2026-05-25T11:59:00.000Z',
+          latest_run_at: '2026-05-25T11:59:30.000Z',
+          latest_event_at: '2026-05-25T11:59:30.000Z',
+          running_task_count: 2,
+          active_assignee_count: 3,
+          state: 'live'
+        },
+        agents: [{ assigned_task: 't_private', current_goal: 'Do not expose this raw title' }]
+      };
+    }
+  });
+
+  assert.deepEqual(payload.kanban.freshness, {
+    latest_observed_at: '2026-05-25T11:59:30.000Z',
+    latest_task_at: '2026-05-25T11:59:00.000Z',
+    latest_run_at: '2026-05-25T11:59:30.000Z',
+    latest_event_at: '2026-05-25T11:59:30.000Z',
+    running_task_count: 2,
+    active_assignee_count: 3,
+    state: 'live'
+  });
+  assert.equal(JSON.stringify(payload).includes('t_private'), false);
+  assert.equal(JSON.stringify(payload).includes('Do not expose'), false);
+  assert.equal(JSON.stringify(payload).includes('/data/hermes/kanban.db'), false);
+});

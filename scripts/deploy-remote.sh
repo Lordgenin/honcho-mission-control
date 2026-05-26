@@ -31,6 +31,8 @@ LOCAL_KANBAN_DB="${LOCAL_KANBAN_DB:-}"
 LIVE_KANBAN_HOST_DB="${LIVE_KANBAN_HOST_DB:-}"
 DEPLOY_HEALTH_URL="${DEPLOY_HEALTH_URL:-http://$REMOTE_HOST:3000/api/health}"
 EXPECT_LIVE_KANBAN="${EXPECT_LIVE_KANBAN:-}"
+EXPECT_KANBAN_TASK_ID="${EXPECT_KANBAN_TASK_ID:-}"
+EXPECT_KANBAN_MIN_EVENT_EPOCH="${EXPECT_KANBAN_MIN_EVENT_EPOCH:-}"
 REMOTE_KANBAN_DB=""
 SSH=(ssh -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$REMOTE_USER@$REMOTE_HOST")
 SCP=(scp -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
@@ -121,6 +123,13 @@ set_default_kv HERMES_KANBAN_DBS /data/hermes/kanban.db "$TMPDIR/.env"
 set_default_kv HERMES_KANBAN_DB /data/hermes/kanban.db "$TMPDIR/.env"
 set_default_kv HERMES_KANBAN_DATABASE /data/hermes/kanban.db "$TMPDIR/.env"
 if [ -n "$LIVE_KANBAN_HOST_DB" ]; then
+  if [ -n "$REMOTE_KANBAN_DB" ] && [ -r "$REMOTE_KANBAN_DB" ]; then
+    echo "Refreshing operator-selected live Kanban host DB from uploaded current board copy..."
+    mkdir -p "$(dirname "$LIVE_KANBAN_HOST_DB")"
+    cp "$REMOTE_KANBAN_DB" "$LIVE_KANBAN_HOST_DB.tmp"
+    mv "$LIVE_KANBAN_HOST_DB.tmp" "$LIVE_KANBAN_HOST_DB"
+    rm -f "$REMOTE_KANBAN_DB"
+  fi
   set_kv HERMES_KANBAN_HOST_DB "$LIVE_KANBAN_HOST_DB" "$TMPDIR/.env"
   set_kv HERMES_KANBAN_SOURCE_MODE live "$TMPDIR/.env"
   unset_kv HERMES_KANBAN_SNAPSHOT_HOST_DB "$TMPDIR/.env"
@@ -156,10 +165,11 @@ echo "Running configured deploy helper..."
 "${SSH[@]}" "sudo -n '$REMOTE_DEPLOY_CMD'"
 
 if [ "$EXPECT_LIVE_KANBAN" = "true" ] || [ -n "$LIVE_KANBAN_HOST_DB" ]; then
-  echo "Verifying deployed health does not report a static Kanban snapshot in live mode..."
+  echo "Verifying deployed health reports live Kanban and safe freshness in live mode..."
   HEALTH_JSON="$(curl -fsS "$DEPLOY_HEALTH_URL")"
-  HEALTH_JSON="$HEALTH_JSON" python3 - <<'PY'
+  HEALTH_JSON="$HEALTH_JSON" EXPECT_KANBAN_MIN_EVENT_EPOCH="$EXPECT_KANBAN_MIN_EVENT_EPOCH" python3 - <<'PY'
 import json, os
+from datetime import datetime
 payload = json.loads(os.environ.get('HEALTH_JSON') or '{}')
 kanban = payload.get('kanban') or {}
 source_mode = kanban.get('source_mode')
@@ -168,8 +178,30 @@ if source_mode == 'static-snapshot' or source_label == 'static-snapshot-db':
     raise SystemExit(f'live Kanban deployment rejected static snapshot health: source_mode={source_mode!r}, source_label={source_label!r}')
 if not kanban.get('configured'):
     raise SystemExit('live Kanban deployment rejected unconfigured Kanban health')
-print(f"live Kanban health accepted: source_mode={source_mode}, source_label={source_label}, source_readable={kanban.get('source_readable')}")
+freshness = kanban.get('freshness') or {}
+minimum = os.environ.get('EXPECT_KANBAN_MIN_EVENT_EPOCH') or ''
+if minimum:
+    latest = freshness.get('latest_observed_at') or freshness.get('latest_event_at') or freshness.get('latest_run_at') or freshness.get('latest_task_at')
+    if not latest:
+        raise SystemExit('live Kanban deployment rejected missing freshness timestamp')
+    observed = datetime.fromisoformat(str(latest).replace('Z', '+00:00')).timestamp()
+    if observed < float(minimum):
+        raise SystemExit(f'live Kanban deployment rejected stale freshness: latest_observed_at={latest!r}')
+print(f"live Kanban health accepted: source_mode={source_mode}, source_label={source_label}, source_readable={kanban.get('source_readable')}, latest_observed_at={freshness.get('latest_observed_at')}")
 PY
+  if [ -n "$EXPECT_KANBAN_TASK_ID" ]; then
+    echo "Verifying deployed pages include expected safe Kanban task marker..."
+    BASE_URL="${DEPLOY_HEALTH_URL%/api/health}"
+    PAGE_HTML="$(curl -fsS -H 'Cache-Control: no-cache' "$BASE_URL/agents")"
+    PAGE_HTML="$PAGE_HTML" EXPECT_KANBAN_TASK_ID="$EXPECT_KANBAN_TASK_ID" python3 - <<'PY'
+import os
+html = os.environ.get('PAGE_HTML') or ''
+task_id = os.environ.get('EXPECT_KANBAN_TASK_ID') or ''
+if task_id and task_id not in html:
+    raise SystemExit('live Kanban deployment rejected stale /agents payload: expected safe task marker absent')
+print('live Kanban page freshness accepted: expected safe task marker present')
+PY
+  fi
 fi
 
 echo "Deployment script completed. Source revision: main@$REV"

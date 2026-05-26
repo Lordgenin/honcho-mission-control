@@ -73,11 +73,22 @@ test('deploy-remote separates live remote Kanban mounts from copied static snaps
   assert.match(source, /set_kv HERMES_KANBAN_SNAPSHOT_HOST_DB "\$REMOTE_INCOMING\/runtime\/kanban\.db" "\$TMPDIR\/\.env"/);
 });
 
-test('deploy-remote rejects static snapshot health when deploying live Kanban mounts', async () => {
+test('deploy-remote can refresh selected live Kanban host DB from a current uploaded board copy', async () => {
+  const source = await fs.readFile(deployRemoteSource, 'utf8');
+
+  assert.match(source, /if \[ -n "\$REMOTE_KANBAN_DB" \] && \[ -r "\$REMOTE_KANBAN_DB" \]; then/);
+  assert.match(source, /cp "\$REMOTE_KANBAN_DB" "\$LIVE_KANBAN_HOST_DB\.tmp"/);
+  assert.match(source, /mv "\$LIVE_KANBAN_HOST_DB\.tmp" "\$LIVE_KANBAN_HOST_DB"/);
+});
+
+test('deploy-remote rejects static or stale live Kanban health and missing page sentinels', async () => {
   const source = await fs.readFile(deployRemoteSource, 'utf8');
 
   assert.match(source, /DEPLOY_HEALTH_URL="\$\{DEPLOY_HEALTH_URL:-http:\/\/\$REMOTE_HOST:3000\/api\/health\}"/);
+  assert.match(source, /EXPECT_KANBAN_TASK_ID="\$\{EXPECT_KANBAN_TASK_ID:-\}"/);
+  assert.match(source, /EXPECT_KANBAN_MIN_EVENT_EPOCH="\$\{EXPECT_KANBAN_MIN_EVENT_EPOCH:-\}"/);
   assert.match(source, /if \[ "\$EXPECT_LIVE_KANBAN" = "true" \] \|\| \[ -n "\$LIVE_KANBAN_HOST_DB" \]; then/);
   assert.match(source, /source_mode == 'static-snapshot' or source_label == 'static-snapshot-db'/);
-  assert.match(source, /live Kanban deployment rejected static snapshot health/);
+  assert.match(source, /live Kanban deployment rejected stale freshness/);
+  assert.match(source, /live Kanban deployment rejected stale \/agents payload/);
 });
