@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDashboardEnv, getPublicDashboardEnv } from '../lib/env.js';
-import { createRouteScopedSnapshot, discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion, sanitizePublicValue } from '../lib/data-utils.js';
+import { createRouteScopedSnapshot, discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion, resetPerformanceTelemetryHistory, sanitizePublicValue, summarizePerformanceTelemetry, templateEndpointPath } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 import { getHealthPayload } from '../lib/health.js';
@@ -147,7 +147,7 @@ test('getHonchoSnapshot reports peers list failures with path, status, and error
 
     assert.equal(snapshot.source, 'live-partial');
     assert.equal(snapshot.status.ok, false);
-    assert.deepEqual(failure, { path: '/v3/workspaces/workspace-1/peers/list', status: 503, error: 'http-503' });
+    assert.deepEqual(failure, { path: '/v3/workspaces/{workspace}/peers/list', status: 503, error: 'http-503' });
     assert.equal(snapshot.peers.length, 0);
   } finally {
     globalThis.fetch = originalFetch;
@@ -258,10 +258,10 @@ test('getHonchoSnapshot in unauthenticated live mode strips message and memory b
   globalThis.fetch = async (url) => {
     const path = new URL(String(url)).pathname;
     const payloads = {
-      '/v3/workspaces/workspace-1/peers/list': { peers: [{ id: 'hermes-jarvis', metadata: { type: 'agent', current_goal: 'Private operator goal mentions JWT setup', raw: { token: 'secret-token-value' } } }] },
-      '/v3/workspaces/workspace-1/sessions/list': { sessions: [{ id: 'session-1', is_active: true, metadata: { title: 'Private imported memory session' } }] },
-      '/v3/workspaces/workspace-1/conclusions/list': { conclusions: [{ id: 'conclusion-1', text: 'Imported memory says local Honcho JWT exists', metadata: { raw: { config: 'HONCHO_API_KEY=secret' } } }] },
-      '/v3/workspaces/workspace-1/sessions/session-1/messages/list': { messages: [{ id: 'message-1', content: 'Raw message body includes JWT and /root/.hermes/config.yaml', raw: { nested: { token: 'secret-token-value' } } }] }
+      '/v3/workspaces/workspace-1/peers/list': { peers: [{ id: 'hermes-jarvis', metadata: { type: 'agent', current_goal: 'Ship live memory dashboard', raw: { token: 'secret-token-value' } } }] },
+      '/v3/workspaces/workspace-1/sessions/list': { sessions: [{ id: 'session-1', is_active: true, metadata: { title: 'Operator memory session' } }] },
+      '/v3/workspaces/workspace-1/conclusions/list': { conclusions: [{ id: 'conclusion-1', text: 'Use scoped live dashboard data for the operator', metadata: { raw: { config: 'HONCHO_API_KEY=secret' } } }] },
+      '/v3/workspaces/workspace-1/sessions/session-1/messages/list': { messages: [{ id: 'message-1', content: 'Live dashboard message from the configured workspace; token secret-token-value should not leak', raw: { nested: { token: 'secret-token-value' } } }] }
     };
     return new Response(JSON.stringify(payloads[path] || {}), { status: 200, headers: { 'content-type': 'application/json' } });
   };
@@ -276,17 +276,100 @@ test('getHonchoSnapshot in unauthenticated live mode strips message and memory b
     assert.equal(snapshot.messages[0].content, '[redacted: live message body hidden without operator authentication]');
     assert.equal(snapshot.sessions[0].message_count, 1);
     assert.equal(snapshot.conclusions[0].text, '[redacted: live memory text hidden without operator authentication]');
-    assert.equal(serialized.includes('Raw message body'), false);
-    assert.equal(serialized.includes('Imported memory says'), false);
-    assert.equal(serialized.includes('JWT'), false);
+    assert.equal(serialized.includes('Live dashboard message from the configured workspace'), false);
+    assert.equal(serialized.includes('Use scoped live dashboard data for the operator'), false);
     assert.equal(serialized.includes('HONCHO_API_KEY'), false);
-    assert.equal(serialized.includes('/root/.hermes'), false);
     assert.equal(serialized.includes('secret-token-value'), false);
     assert.equal(serialized.includes('\"raw\"'), false);
   } finally {
     globalThis.fetch = originalFetch;
     process.env = originalEnv;
   }
+});
+
+test('summarizePerformanceTelemetry records live aggregate history without raw endpoint details', () => {
+  resetPerformanceTelemetryHistory();
+
+  const first = summarizePerformanceTelemetry({
+    source: 'live',
+    generatedAt: '2026-05-25T00:00:01.000Z',
+    records: [
+      { path: '/v3/workspaces/workspace-1/peers/list', ok: true, status: 200, latency_ms: 120, observed_at: '2026-05-25T00:00:00.000Z' },
+      { path: '/v3/workspaces/workspace-1/sessions/list', ok: false, status: 503, error: 'http-503', latency_ms: 240, observed_at: '2026-05-25T00:00:00.500Z' }
+    ]
+  });
+  const second = summarizePerformanceTelemetry({
+    source: 'live',
+    generatedAt: '2026-05-25T00:00:31.000Z',
+    records: [
+      { path: '/v3/workspaces/workspace-1/conclusions/list', ok: true, status: 200, latency_ms: 60, observed_at: '2026-05-25T00:00:30.000Z' }
+    ]
+  });
+
+  assert.equal(first.timeseries.length, 1);
+  assert.equal(second.timeseries.length, 2);
+  assert.deepEqual(second.timeseries.map((point) => point.label), ['00:00:01', '00:00:31']);
+  assert.deepEqual(second.timeseries.map((point) => point.request_count), [2, 1]);
+  assert.deepEqual(second.timeseries.map((point) => point.failed_count), [1, 0]);
+  assert.equal(JSON.stringify(second.timeseries).includes('workspace-1'), false);
+  assert.equal(second.history.available, true);
+  assert.equal(second.history.source, 'live-aggregate-ring-buffer');
+});
+
+test('summarizePerformanceTelemetry marks live history unavailable before enough samples', () => {
+  resetPerformanceTelemetryHistory();
+  const summary = summarizePerformanceTelemetry({ source: 'live', generatedAt: '2026-05-25T00:00:01.000Z', records: [] });
+
+  assert.equal(summary.timeseries.length, 0);
+  assert.equal(summary.history.available, false);
+  assert.equal(summary.history.reason, 'insufficient-samples');
+});
+
+test('summarizePerformanceTelemetry templates endpoint identifiers in browser-visible telemetry', () => {
+  resetPerformanceTelemetryHistory();
+  const summary = summarizePerformanceTelemetry({
+    source: 'live',
+    generatedAt: '2026-05-25T00:00:01.000Z',
+    records: [
+      { path: '/v3/workspaces/agent-company/sessions/session-secret-123/messages/list', ok: true, status: 200, latency_ms: 311 },
+      { path: '/v3/workspaces/agent-company/sessions/session-secret-456/messages/list', ok: false, status: 500, error: 'http-500', latency_ms: 499 }
+    ]
+  });
+  const serialized = JSON.stringify(summary);
+
+  assert.equal(templateEndpointPath('/v3/workspaces/agent-company/sessions/session-secret-123/messages/list'), '/v3/workspaces/{workspace}/sessions/{session}/messages/list');
+  assert.equal(summary.slow_endpoints[0].path, '/v3/workspaces/{workspace}/sessions/{session}/messages/list');
+  assert.equal(summary.errors.recent[0].path, '/v3/workspaces/{workspace}/sessions/{session}/messages/list');
+  assert.equal(serialized.includes('agent-company'), false);
+  assert.equal(serialized.includes('session-secret'), false);
+});
+
+test('context route scope exposes aggregate summary without raw nested structures or identifiers', () => {
+  const scoped = createRouteScopedSnapshot({
+    source: 'live',
+    readOnly: true,
+    env: { liveDataAllowed: true },
+    status: { ok: true },
+    generated_at: '2026-05-25T00:00:00Z',
+    workspaces: [{ id: 'agent-company', workspace_id: 'agent-company', name: 'agent-company' }],
+    peers: [{ id: 'hermes-jarvis', workspace_id: 'agent-company', metadata: { type: 'agent', raw: { token: 'secret-token-value' } } }],
+    sessions: [{ id: 'session-secret-123', workspace_id: 'agent-company', message_count: 3 }],
+    messages: [{ id: 'message-secret-1', workspace_id: 'agent-company', session_id: 'session-secret-123', content: 'private operator memory payload' }],
+    conclusions: [{ id: 'conclusion-secret-1', workspace_id: 'agent-company', text: 'private conclusion' }],
+    kanban: { available: true, state: 'available', source: 'container-mounted-db', agents: [{ id: 'hermes-jarvis', assigned_task: 't_private', current_goal: 'private project raw payload' }] }
+  }, 'context');
+  const serialized = JSON.stringify(scoped);
+
+  assert.equal(scoped.context_summary.data_minimized, true);
+  assert.equal(scoped.context_summary.workspace_count, 1);
+  assert.equal(scoped.workspaces.length, 0);
+  assert.equal(scoped.messages.length, 0);
+  assert.equal(scoped.conclusions.length, 0);
+  assert.equal(serialized.includes('agent-company'), false);
+  assert.equal(serialized.includes('session-secret'), false);
+  assert.equal(serialized.includes('message-secret'), false);
+  assert.equal(serialized.includes('private operator memory payload'), false);
+  assert.equal(serialized.includes('\"raw\"'), false);
 });
 
 test('sanitizePublicValue removes nested raw fields and private semantic text, not only concrete tokens', () => {

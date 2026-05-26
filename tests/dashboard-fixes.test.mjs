@@ -104,7 +104,7 @@ test('summarizePerformanceTelemetry exposes freshness, request, latency, error, 
   assert.equal(summary.errors.total, 1);
   assert.equal(summary.latency.avg_ms, 5020);
   assert.equal(summary.latency.max_ms, 10000);
-  assert.equal(summary.slow_endpoints[0].path, '/v3/workspaces/workspace-1/sessions/list');
+  assert.equal(summary.slow_endpoints[0].path, '/v3/workspaces/{workspace}/sessions/list');
 });
 
 test('getHonchoSnapshot attaches request telemetry when live fetches partially fail', async () => {
@@ -129,7 +129,7 @@ test('getHonchoSnapshot attaches request telemetry when live fetches partially f
     assert.equal(snapshot.source, 'live-partial');
     assert.equal(snapshot.performance.health.state, 'degraded');
     assert.equal(snapshot.performance.requests.failed, 1);
-    assert.equal(snapshot.performance.errors.recent[0].path, '/v3/workspaces/workspace-1/sessions/list');
+    assert.equal(snapshot.performance.errors.recent[0].path, '/v3/workspaces/{workspace}/sessions/list');
     assert.ok(snapshot.performance.freshness.generated_at);
   } finally {
     globalThis.fetch = originalFetch;
