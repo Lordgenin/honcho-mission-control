@@ -329,7 +329,37 @@ test('public Honcho proxy response shaping strips arbitrary message and conclusi
       }
     ]
   }, ['v3', 'workspaces', 'workspace-1', 'conclusions', 'list']);
-  const serialized = JSON.stringify({ proxyMessages, proxyConclusions });
+  const wrappedMessage = protectPublicProxyResponse({
+    message: {
+      id: 'message-2',
+      session_id: 'session-2',
+      content: 'Wrapped message content must be redacted',
+      text: 'Wrapped message text must be redacted'
+    }
+  }, ['v3', 'workspaces', 'workspace-1', 'sessions', 'session-2', 'messages', 'message-2']);
+  const wrappedResult = protectPublicProxyResponse({
+    result: {
+      id: 'message-3',
+      session_id: 'session-3',
+      content: 'Wrapped result content must be redacted'
+    }
+  }, ['v3', 'workspaces', 'workspace-1', 'sessions', 'session-3', 'messages', 'message-3']);
+  const wrappedConclusion = protectPublicProxyResponse({
+    conclusion: {
+      id: 'conclusion-2',
+      text: 'Wrapped conclusion text must be redacted',
+      content: 'Wrapped conclusion content must be redacted',
+      confidence: 0.72
+    }
+  }, ['v3', 'workspaces', 'workspace-1', 'conclusions', 'conclusion-2']);
+  const nestedDataMessage = protectPublicProxyResponse({
+    data: {
+      id: 'message-4',
+      session_id: 'session-4',
+      content: 'Nested data message content must be redacted'
+    }
+  }, ['v3', 'workspaces', 'workspace-1', 'sessions', 'session-4', 'messages', 'message-4']);
+  const serialized = JSON.stringify({ proxyMessages, proxyConclusions, wrappedMessage, wrappedResult, wrappedConclusion, nestedDataMessage });
 
   assert.equal(proxyMessages.messages[0].content, '[redacted: live message body hidden in public/unauthenticated mode]');
   assert.equal(proxyMessages.messages[0].text, '[redacted: live message body hidden in public/unauthenticated mode]');
@@ -337,8 +367,20 @@ test('public Honcho proxy response shaping strips arbitrary message and conclusi
   assert.equal(proxyConclusions.items[0].text, '[redacted: live memory text hidden in public/unauthenticated mode]');
   assert.equal(proxyConclusions.items[0].content, '[redacted: live memory text hidden in public/unauthenticated mode]');
   assert.equal(proxyConclusions.items[0].confidence, 0.81);
+  assert.equal(wrappedMessage.message.content, '[redacted: live message body hidden in public/unauthenticated mode]');
+  assert.equal(wrappedMessage.message.text, '[redacted: live message body hidden in public/unauthenticated mode]');
+  assert.equal(wrappedMessage.message.session_id, 'session-2');
+  assert.equal(wrappedResult.result.content, '[redacted: live message body hidden in public/unauthenticated mode]');
+  assert.equal(wrappedConclusion.conclusion.text, '[redacted: live memory text hidden in public/unauthenticated mode]');
+  assert.equal(wrappedConclusion.conclusion.content, '[redacted: live memory text hidden in public/unauthenticated mode]');
+  assert.equal(wrappedConclusion.conclusion.confidence, 0.72);
+  assert.equal(nestedDataMessage.data.content, '[redacted: live message body hidden in public/unauthenticated mode]');
   assert.equal(serialized.includes('Plain harmless-looking sentence'), false);
   assert.equal(serialized.includes('Benign-looking memory conclusion'), false);
+  assert.equal(serialized.includes('Wrapped message content'), false);
+  assert.equal(serialized.includes('Wrapped result content'), false);
+  assert.equal(serialized.includes('Wrapped conclusion text'), false);
+  assert.equal(serialized.includes('Nested data message content'), false);
   assert.equal(serialized.includes('\\"raw\\"'), false);
 });
 
