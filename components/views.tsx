@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { discoverAgents, getAgentActivityLabel, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, statusTone } from '../lib/data-utils.js';
-import { Badge, Button, Card, EmptyState } from './ui';
+import { ActionNotice, Badge, Button, Card, EmptyState } from './ui';
 import { SearchList } from './search-list';
 import { DataTable } from './data-table';
 import { PerformanceChart } from './charts';
@@ -28,18 +28,20 @@ function StatusBanner({ snapshot }: { snapshot: any }) {
       <div>
         <p className="text-sm uppercase tracking-[0.3em] text-teal-300">Current posture</p>
         <h3 className="mt-2 text-2xl font-semibold">{posture.label}</h3>
+        <p className="mt-1 max-w-3xl text-sm font-semibold text-teal-100">{posture.phrase}</p>
         <p className="mt-2 max-w-3xl text-sm text-slate-300">{posture.summary}</p>
-        <p className="mt-2 max-w-3xl text-sm text-teal-100"><span className="font-semibold">Next:</span> {posture.nextAction}</p>
+        <p className="mt-2 max-w-3xl text-sm text-teal-100"><span className="font-semibold">Action posture:</span> {posture.actionPosture}</p>
+        <p className="mt-1 max-w-3xl text-sm text-teal-100"><span className="font-semibold">Next:</span> {posture.nextAction}</p>
         <div className="mt-4 grid gap-2 text-xs text-slate-300 md:grid-cols-5">
           {subsystemStatuses.map((item: any) => <div className="rounded-xl border border-border bg-slate-950/40 p-2" key={item.id}><p className="font-semibold text-slate-100">{item.label}</p><p className="mt-1 uppercase tracking-wide text-slate-400">{item.state}</p></div>)}
         </div>
       </div>
       <div className="flex flex-wrap gap-2 lg:justify-end">
-        <Badge className={posture.tone}>{snapshot.source || 'loading'} data</Badge>
-        <Badge className={snapshot.status?.ok ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-300'}>{snapshot.status?.ok ? 'Honcho OK' : 'Honcho needs attention'}</Badge>
+        <Badge className={posture.tone}>{posture.label}</Badge>
+        <Badge className={snapshot.status?.ok ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-400/30 bg-amber-500/10 text-amber-300'}>{snapshot.status?.ok ? 'sanitized health OK' : 'sanitized health degraded'}</Badge>
         <Badge className={snapshot.kanban?.available === false ? 'border-amber-400/30 bg-amber-500/10 text-amber-300' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'}>Kanban {snapshot.kanban?.state || 'unknown'}</Badge>
-        <Badge className="border-sky-400/30 bg-sky-500/10 text-sky-300">{snapshot.env?.liveDataAllowed ? 'operator live data' : 'public privacy protected'}</Badge>
-        <Badge className="border-sky-400/30 bg-sky-500/10 text-sky-300">{snapshot.readOnly === false ? 'mutations enabled' : 'read-only'}</Badge>
+        <Badge className="border-sky-400/30 bg-sky-500/10 text-sky-300">{posture.phrase}</Badge>
+        <Badge className="border-sky-400/30 bg-sky-500/10 text-sky-300">{posture.actionPosture}</Badge>
       </div>
     </div>
   </Card>;
@@ -49,9 +51,9 @@ function QuickStart() {
   return <Card className="mt-6">
     <h3 className="text-xl font-semibold">First-run checklist</h3>
     <ol className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-3">
-      <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">1.</span> Configure the upstream Honcho connection and credentials server-side before exposing the dashboard.</li>
-      <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">2.</span> Keep public deployments in read-only mode until mutations are explicitly needed.</li>
-      <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">3.</span> Open Agents and Workspaces to confirm live peers are visible before sharing the dashboard.</li>
+      <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">1.</span> Public Vercel starts as sanitized demo/protected preview data, not an unauthenticated live operator console.</li>
+      <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">2.</span> Keep browser-visible settings documentation-safe: placeholders only, no private origins, paths, credentials, or raw memory.</li>
+      <li className="rounded-xl border border-border bg-slate-950/40 p-3"><span className="text-teal-300">3.</span> Self-host behind your own access boundary before enabling scoped live-private reads; writes require a separate reviewed mutation gate.</li>
     </ol>
     <div className="mt-4 flex flex-wrap gap-3"><Link href="/settings"><Button>Review settings</Button></Link><Link href="/api-playground"><Button>Try API proxy</Button></Link></div>
   </Card>;
@@ -95,8 +97,8 @@ export function ContextView({ snapshot }: { snapshot: any }) {
     <Card className="mt-6"><h3 className="mb-3 text-xl font-semibold">Agent aggregate status</h3>{agentStatuses.length ? <div className="grid gap-3 md:grid-cols-2">{agentStatuses.map((agent: any, index: number) => <div className="rounded-xl border border-border bg-slate-950/40 p-3" key={`${agent.label}-${index}`}><div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-100">{agent.label || 'Agent'}</p><Badge className={statusTone(agent.status)}>{agent.status || 'unknown'}</Badge></div><p className="mt-1 text-xs text-slate-400">{agent.role || 'agent'} · {agent.team || 'team unknown'}</p><p className="mt-2 text-xs text-slate-500">Goal source: {agent.current_goal_source || 'not-reported'} · Task source: {agent.assigned_task_source || 'not-reported'}</p></div>)}</div> : <EmptyState title="No agent status summaries" body="No minimized agent status entries were available for this context snapshot."/>}</Card>
   </>;
 }
-export function ApiPlaygroundView({ snapshot }: { snapshot: any }) { return <><Header title="API playground" body="Read-only endpoint explorer. Browser requests target the Next.js server proxy, never Honcho directly."/><Card><p className="text-slate-300">Try server proxy paths such as <code>/api/honcho/v3/workspaces/list</code>, <code>/api/honcho/v3/workspaces/{'{workspaceId}'}/peers/list</code>, or <code>/api/honcho/v3/workspaces/{'{workspaceId}'}/sessions/list</code>. Unsupported non-v3 paths are not proxied.</p><Button className="mt-4" disabled={snapshot.readOnly}>Mutating requests disabled in public mode</Button></Card></>; }
-export function WebhooksView({ snapshot }: { snapshot: any }) { return <><Header title="Webhooks" body="Webhook configuration preview with read-only safeguards."/><SearchList items={snapshot.webhooks} placeholder="Search webhooks..." render={(w) => <Card><p className="font-semibold">{w.event}</p><p className="text-sm text-slate-400">{w.url}</p><Button className="mt-3" disabled={snapshot.readOnly}>Send test delivery</Button></Card>} /></>; }
+export function ApiPlaygroundView({ snapshot }: { snapshot: any }) { const posture = getSnapshotPosture(snapshot); const disabled = snapshot.readOnly !== false; return <><Header title="API playground" body="Read-only endpoint explorer. Browser requests target the Next.js server proxy, never Honcho directly."/><Card><div className="space-y-4"><p className="text-slate-300">Try server proxy paths such as <code>/api/honcho/v3/workspaces/list</code>, <code>/api/honcho/v3/workspaces/{'{workspaceId}'}/peers/list</code>, or <code>/api/honcho/v3/workspaces/{'{workspaceId}'}/sessions/list</code>. Unsupported non-v3 paths are not proxied.</p><ActionNotice mode={disabled ? (posture.label === 'public-demo' ? 'demo' : 'read-only') : 'live'}>{disabled ? `${posture.label}: ${posture.actionPosture}. POST/PUT/PATCH/DELETE controls are disabled for this posture.` : `${posture.label}: reviewed mutation-enabled mode is active for this private deployment.`}</ActionNotice><Button disabled={disabled}>{disabled ? 'Mutation preview disabled' : 'Mutation route enabled'}</Button></div></Card></>; }
+export function WebhooksView({ snapshot }: { snapshot: any }) { const posture = getSnapshotPosture(snapshot); const disabled = snapshot.readOnly !== false; return <><Header title="Webhooks" body="Documentation-safe webhook preview with read-only safeguards and placeholder endpoints."/><ActionNotice mode={disabled ? (posture.label === 'public-demo' ? 'demo' : 'read-only') : 'live'}>{disabled ? `${posture.label}: webhook deliveries are disabled; controls are previews and no external delivery will be attempted.` : `${posture.label}: test delivery controls may call reviewed private endpoints only.`}</ActionNotice><div className="mt-4"><SearchList items={snapshot.webhooks} placeholder="Search webhooks..." render={(w) => <Card><p className="font-semibold">{w.event}</p><p className="text-sm text-slate-300">{w.url || 'https://example.invalid/webhook'}</p><Button className="mt-3" disabled={disabled}>{disabled ? 'Test delivery disabled' : 'Send test delivery'}</Button></Card>} /></div></>; }
 export function PerformanceView({ snapshot }: { snapshot: any }) {
   const performance = snapshot.performance || {};
   const legacySeries = Array.isArray(performance) ? performance : [];
@@ -129,14 +131,14 @@ export function PerformanceView({ snapshot }: { snapshot: any }) {
   </>;
 }
 
-export function SettingsView({ snapshot }: { snapshot: any }) { return <><Header title="Settings" body="Public posture summary without exposing server-side configuration names, credentials, network hints, or paths."/><Card><div className="grid gap-3 text-sm"><p>Server connection: {snapshot.env.honchoConnection || 'configured server-side'}</p><p>Workspace scope: {snapshot.env.workspaceScope || 'public-safe aggregate'}</p><p>Data exposure: {snapshot.env.dataExposure || 'public privacy protected'}</p><p>Demo posture: {snapshot.env.demoData || 'live service configured with public protections'}</p><p>Mutation posture: {snapshot.env.mutations || 'disabled for public mode'}</p></div></Card></>; }
+export function SettingsView({ snapshot }: { snapshot: any }) { const posture = getSnapshotPosture(snapshot); return <><Header title="Settings" body="Public posture summary without exposing server-side configuration names, credentials, network hints, or paths."/><Card><div className="grid gap-3 text-sm"><p>Mode label: {posture.label}</p><p>Mode phrase: {posture.phrase}</p><p>Server connection: {snapshot.env.honchoConnection || 'server-side connection configured'}</p><p>Workspace scope: {snapshot.env.workspaceScope || 'public-safe aggregate'}</p><p>Data exposure: {snapshot.env.dataExposure || 'public privacy protected'}</p><p>Demo posture: {snapshot.env.demoData || 'live service configured with public protections'}</p><p>Action posture: {posture.actionPosture}</p></div></Card></>; }
 function PeerDiscoveryFailure({ failure }: { failure: any }) {
   return <Card className="border-rose-400/40 bg-rose-500/10">
     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
       <div>
         <p className="text-sm uppercase tracking-[0.25em] text-rose-300">Peer discovery degraded</p>
         <h3 className="mt-2 text-2xl font-semibold text-rose-100">Could not load Honcho peers</h3>
-        <p className="mt-2 max-w-3xl text-sm text-rose-100/80">The Agents page is not empty: Honcho peer discovery failed. Refresh this page after checking the upstream Honcho service, workspace id, API key, and network path.</p>
+        <p className="mt-2 max-w-3xl text-sm text-rose-100/80">The Agents page is not empty: Honcho peer discovery failed. Refresh this page after checking the private upstream service, workspace scope, server-side connection posture, and deployment boundary.</p>
         <dl className="mt-4 grid gap-2 text-sm text-rose-50/80 md:grid-cols-3">
           <div><dt className="text-rose-200/70">Path</dt><dd className="break-all font-mono">{failure.path || 'peers/list'}</dd></div>
           <div><dt className="text-rose-200/70">Status</dt><dd>{failure.status ?? 'unknown'}</dd></div>

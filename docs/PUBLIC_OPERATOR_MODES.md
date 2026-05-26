@@ -2,6 +2,8 @@
 
 Honcho Mission Control is designed to be safe to publish before it is connected to private memory. Public mode is the default; operator/live-private mode must be enabled deliberately on the server.
 
+See `docs/PUBLIC_OPERATOR_RELEASE_POLICY.md` for the locked public/operator release decision, exact mode-label taxonomy, public section visibility policy, action policy, routing owner/path, and approved public release claim.
+
 ## Mode summary
 
 | Mode | Intended audience | Required setting | What may render | What must not render |

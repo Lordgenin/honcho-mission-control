@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Activity, Bot, Brain, Gauge, Home, MessageSquare, Network, Settings, TestTube, Webhook } from 'lucide-react';
 import { getSnapshotPosture } from '../lib/data-utils.js';
+import { CommandPalette } from './command-palette';
 import { Badge, cn } from './ui';
 
 type NavItem = [href: string, Icon: ComponentType<{ className?: string }>, label: string];
@@ -58,7 +59,7 @@ export function Shell({ children, snapshot }: { children: ReactNode; snapshot?: 
       </nav>
       <div className="absolute bottom-5 left-5 right-5 space-y-2">
         <Badge className={posture.tone}>{posture.label}</Badge>
-        <p className="text-xs text-slate-500">{snapshot?.readOnly === false ? 'Mutations enabled' : 'Read-only'} · {posture.nextAction}</p>
+        <p className="text-xs text-slate-500">{posture.phrase} · {posture.actionPosture}</p>
       </div>
     </aside>
     <div className="sticky top-0 z-10 border-b border-border bg-slate-950/85 p-3 backdrop-blur lg:hidden">
@@ -70,6 +71,14 @@ export function Shell({ children, snapshot }: { children: ReactNode; snapshot?: 
         {navItems.map(([href, Icon, label]) => <Link className={cn('flex shrink-0 items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-slate-300', isActive(href) && 'border-teal-400/40 bg-teal-500/10 text-teal-100')} href={href} key={href}><Icon className="h-3.5 w-3.5" />{label}</Link>)}
       </nav>
     </div>
-    <main className="lg:pl-72"><div className="mx-auto max-w-7xl p-5 lg:p-8">{children}</div></main>
+    <main className="lg:pl-72">
+      <div className="mx-auto max-w-7xl p-5 lg:p-8">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-slate-950/55 p-3" role="region" aria-label="Dashboard route controls">
+          <p className="text-xs uppercase tracking-[0.25em] text-slate-300">Route {pathname || '/'}</p>
+          <CommandPalette />
+        </div>
+        {children}
+      </div>
+    </main>
   </div>;
 }

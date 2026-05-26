@@ -23,6 +23,22 @@ Honcho Mission Control uses Next.js App Router pages. Routes are safe to browse 
 
 Unknown routes render `app/not-found.tsx` instead of falling back to the overview.
 
+## Legacy gamma path redirects
+
+The public gamma QA baseline included older single-page section names. Those paths are now route-backed aliases so shared links do not fall through to a host-level raw 404:
+
+- `/sessions` -> `/workspaces`
+- `/peers` -> `/agents`
+- `/kanban` and `/tasks` -> `/agents`
+- `/reasoning` and `/diagnostics` -> `/performance`
+- `/integrations` -> `/api-playground`
+- `/config` -> `/settings`
+- `/instance` -> `/dashboard`
+
+## Command and action semantics
+
+The global command palette opens from the route controls button or `Ctrl/⌘+K`. Arrow keys move the selected result, Enter navigates to it, Escape closes and clears stale search state, click-outside closes, and no-match queries render an explicit no-results status. Visible mutation-looking controls must be either disabled with an explanatory label in read-only/public mode, demo/local-only with inline feedback, or reviewed live-private actions when mutation mode is explicitly enabled.
+
 ## Status and empty states
 
 The UI distinguishes these cases:

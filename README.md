@@ -272,10 +272,12 @@ Dependency security note: the project pins an npm `overrides.next.postcss` entry
 ## Documentation
 
 - `docs/local-startup.md` - fresh local/Compose startup, required services, env files, live-private opt-in, Kanban mounts, and smoke checks.
+- `docs/PUBLIC_OPERATOR_RELEASE_POLICY.md` - locked public/operator release decision, public section visibility, exact mode labels, action policy, routing owner/path, and approved release claim.
 - `docs/PUBLIC_OPERATOR_MODES.md` - public/operator modes, redaction boundary, Kanban DB configuration, live-state grammar, and safe onboarding checklist.
 - `docs/SELF_HOSTING.md` - deployment and security posture.
 - `docs/public-self-hosting.md` - safe public self-hosting guide and production checklist.
 - `docs/HERMES_MEMORY_VIEW.md` - how Honcho resources map to Hermes memory and agents.
+- `docs/VERCEL_GAMMA_DASHBOARD_VIEW_BASELINE.md` - browser-observed public Vercel gamma dashboard baseline: pages, navigation, interactions, risks, and improvement backlog.
 - `docs/ROUTES.md` - route-by-route reference.
 - `docs/API_CLIENT.md` - live Honcho client and proxy behavior.
 

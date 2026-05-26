@@ -102,18 +102,18 @@ test('getPeerDiscoveryFailure detects failed peers list separately from empty pe
   assert.deepEqual(failure, { path: '/v3/workspaces/workspace-1/peers/list', status: 503, error: 'http-503' });
 });
 
-test('getSnapshotPosture labels demo, live, and degraded states with next operator action', () => {
-  assert.deepEqual(getSnapshotPosture({ source: 'demo', status: { ok: true }, readOnly: true }).label, 'Demo mode');
-  assert.match(getSnapshotPosture({ source: 'demo', status: { ok: true }, readOnly: true }).nextAction, /Connect live Honcho/i);
+test('getSnapshotPosture labels public/operator modes with next operator action', () => {
+  const demo = getSnapshotPosture({ source: 'demo', env: { liveDataAllowed: false, demoData: 'demo requested' }, status: { ok: true }, readOnly: true });
+  assert.equal(demo.label, 'public-demo');
+  assert.match(demo.nextAction, /self-host/i);
 
-  const live = getSnapshotPosture({ source: 'live', status: { ok: true }, readOnly: true });
-  assert.equal(live.label, 'Honcho live OK');
-  assert.match(live.summary, /Honcho API is reachable/i);
+  const live = getSnapshotPosture({ source: 'live', env: { liveDataAllowed: true }, status: { ok: true }, readOnly: true });
+  assert.equal(live.label, 'operator-live-private');
+  assert.match(live.summary, /Scoped live data/i);
 
-  const degraded = getSnapshotPosture({ source: 'live-partial', status: { ok: false, failures: [{ path: '/v3/workspaces/w/peers/list', status: 503, error: 'http-503' }] }, readOnly: true });
-  assert.equal(degraded.label, 'Live but degraded');
-  assert.match(degraded.summary, /1 upstream check failed/i);
-  assert.match(degraded.nextAction, /Open Agents/i);
+  const degraded = getSnapshotPosture({ source: 'live-partial', env: { liveDataAllowed: true }, status: { ok: false, failures: [{ path: '/v3/workspaces/w/peers/list', status: 503, error: 'http-503' }] }, readOnly: true });
+  assert.equal(degraded.label, 'operator-live-partial');
+  assert.match(degraded.summary, /sources are unavailable or degraded/i);
 });
 
 test('session message count labels distinguish API counts from derived counts and unknowns', () => {
@@ -192,7 +192,7 @@ test('getSubsystemStatuses separates Honcho, Kanban, gateway, browser, and priva
   assert.deepEqual(statuses.map((status) => status.id), ['honcho', 'kanban', 'gateway-dispatcher', 'browser-runtime', 'public-privacy']);
   assert.equal(statuses.find((status) => status.id === 'honcho').state, 'degraded');
   assert.equal(statuses.find((status) => status.id === 'kanban').state, 'degraded');
-  assert.equal(statuses.find((status) => status.id === 'public-privacy').state, 'protected');
+  assert.equal(statuses.find((status) => status.id === 'public-privacy').state, 'public-protected');
 });
 
 test('shell includes a client refresh hook for polling dynamic runtime state', async () => {

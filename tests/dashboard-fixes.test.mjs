@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { normalizeV3Session, normalizeV3Message, getPerformanceMetricConfig, sanitizePublicText, summarizePerformanceTelemetry } from '../lib/data-utils.js';
+import { normalizeV3Session, normalizeV3Message, getDashboardMode, getPerformanceMetricConfig, getSnapshotPosture, sanitizePublicText, summarizePerformanceTelemetry } from '../lib/data-utils.js';
 import { isAllowedProxyPath, isReadOnlyPostPath } from '../lib/proxy-policy.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 
@@ -77,15 +77,43 @@ test('performance metric config refuses to label queue/demo values as live laten
   assert.equal(getPerformanceMetricConfig([{ label: 'now', latency_ms: 42 }]).label, 'Demo latency (ms)');
 });
 
-test('sanitizePublicText redacts private env labels, local origins, paths, and token shaped strings', () => {
-  const unsafe = 'Set HONCHO_BASE_URL=http://192.168.20.14:8000 and HONCHO_API_KEY=sk-1234567890abcdefghijklmnopqrstuvwx in /root/.hermes/config.yaml for the operator note.';
+test('sanitizePublicText redacts private env labels, local origins, paths, database URL shapes, and token shaped strings', () => {
+  const unsafe = 'Set HONCHO_BASE_URL=http://192.168.20.14:8000 and DATABASE_URL=postgres://user:pass@localhost:5432/honcho with HONCHO_API_KEY=sk-123...uvwx in /root/.hermes/config.yaml for the operator note on host.docker.internal:8000.';
   const sanitized = sanitizePublicText(unsafe);
 
   assert.equal(sanitized.includes('HONCHO_BASE_URL'), false);
+  assert.equal(sanitized.includes('DATABASE_URL'), false);
+  assert.equal(sanitized.includes('postgres://'), false);
+  assert.equal(sanitized.includes('localhost:5432'), false);
+  assert.equal(sanitized.includes('host.docker.internal'), false);
   assert.equal(sanitized.includes('HONCHO_API_KEY'), false);
   assert.equal(sanitized.includes('192.168.'), false);
   assert.equal(sanitized.includes('/root/.hermes'), false);
-  assert.equal(sanitized.includes('sk-1234567890abcdefghijklmnopqrstuvwx'), false);
+  assert.equal(sanitized.includes('sk-123...uvwx'), false);
+});
+
+test('public dashboard modes use locked taxonomy, exact trust phrases, and safe action posture', () => {
+  const demoMode = getDashboardMode({ source: 'demo', env: { liveDataAllowed: false, demoData: 'demo requested' }, readOnly: true, status: { ok: true } });
+  assert.equal(demoMode.label, 'public-demo');
+  assert.equal(demoMode.phrase, 'SANITIZED DEMO DATA — no live private instance connected');
+  assert.equal(demoMode.actionPosture, 'Demo-only controls; writes disabled');
+  assert.equal(getSnapshotPosture({ source: 'demo', env: { liveDataAllowed: false, demoData: 'demo requested' }, readOnly: true, status: { ok: true } }).label, 'public-demo');
+
+  const protectedMode = getDashboardMode({ source: 'demo', env: { liveDataAllowed: false, demoData: 'live service configured with public protections' }, readOnly: true, status: { ok: true } });
+  assert.equal(protectedMode.label, 'public-protected');
+  assert.equal(protectedMode.phrase, 'PUBLIC PRIVACY PROTECTED — live memory hidden');
+
+  const liveMode = getDashboardMode({ source: 'live', env: { liveDataAllowed: true }, readOnly: true, status: { ok: true } });
+  assert.equal(liveMode.label, 'operator-live-private');
+  assert.equal(liveMode.phrase, 'OPERATOR LIVE-PRIVATE — scoped live data, read-only');
+
+  const partialMode = getDashboardMode({ source: 'live-partial', env: { liveDataAllowed: true }, readOnly: true, status: { ok: false, failures: [{ error: 'auth' }] } });
+  assert.equal(partialMode.label, 'operator-live-partial');
+  assert.equal(partialMode.phrase, 'OPERATOR LIVE-PARTIAL — some sources unavailable');
+
+  const mutationMode = getDashboardMode({ source: 'live', env: { liveDataAllowed: true }, readOnly: false, status: { ok: true } });
+  assert.equal(mutationMode.label, 'operator-mutation-enabled');
+  assert.equal(mutationMode.phrase, 'OPERATOR MUTATION ENABLED — write actions active');
 });
 
 test('summarizePerformanceTelemetry exposes freshness, request, latency, error, and degraded states', () => {
@@ -228,4 +256,53 @@ test('getHonchoSnapshot sanitizes explicitly allowed live memory before public r
     globalThis.fetch = originalFetch;
     process.env = originalEnv;
   }
+});
+
+
+test('dashboard shell exposes deterministic command palette accessibility behavior', () => {
+  const palette = fs.readFileSync(new URL('../components/command-palette.tsx', import.meta.url), 'utf8');
+  const shell = fs.readFileSync(new URL('../components/shell.tsx', import.meta.url), 'utf8');
+
+  assert.match(shell, /<CommandPalette \/>/);
+  assert.match(palette, /aria-label="Open command palette"/);
+  assert.match(palette, /event\.key === 'ArrowDown'/);
+  assert.match(palette, /event\.key === 'ArrowUp'/);
+  assert.match(palette, /event\.key === 'Enter'/);
+  assert.match(palette, /event\.key === 'Escape'/);
+  assert.match(palette, /No results/);
+  assert.match(palette, /event\.target === event\.currentTarget/);
+});
+
+test('legacy gamma dashboard paths are route-backed redirects instead of host-level 404s', () => {
+  const aliases = {
+    sessions: '/workspaces',
+    peers: '/agents',
+    kanban: '/agents',
+    tasks: '/agents',
+    reasoning: '/performance',
+    diagnostics: '/performance',
+    integrations: '/api-playground',
+    config: '/settings',
+    instance: '/dashboard'
+  };
+
+  for (const [route, target] of Object.entries(aliases)) {
+    const source = fs.readFileSync(new URL(`../app/${route}/page.tsx`, import.meta.url), 'utf8');
+    assert.match(source, /redirect\('/);
+    assert.ok(source.includes(target), `${route} redirects to ${target}`);
+  }
+});
+
+test('basic WCAG hygiene surfaces are present in shared UI and not-found route', () => {
+  const ui = fs.readFileSync(new URL('../components/ui.tsx', import.meta.url), 'utf8');
+  const table = fs.readFileSync(new URL('../components/data-table.tsx', import.meta.url), 'utf8');
+  const notFound = fs.readFileSync(new URL('../app/not-found.tsx', import.meta.url), 'utf8');
+
+  assert.match(ui, /focus-visible:ring-2/);
+  assert.match(ui, /aria-disabled/);
+  assert.match(ui, /role="status"/);
+  assert.match(table, /role="region"/);
+  assert.match(table, /aria-label="Scrollable data table"/);
+  assert.match(notFound, /app-level 404/);
+  assert.match(notFound, /no private runtime details are exposed/);
 });
