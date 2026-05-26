@@ -8,10 +8,12 @@ Honcho Mission Control is designed for a safe public-repo default posture:
 
 - `HONCHO_API_KEY` is read only on the server.
 - Browser code talks to the Next.js `/api/honcho/[...path]` proxy, not directly to Honcho.
-- Raw live Honcho memory is hidden in public protected mode unless `ALLOW_LIVE_PUBLIC_DATA=true` is explicitly set server-side for a trusted operator deployment.
+- Raw live Honcho memory is hidden in public protected mode unless `ALLOW_LIVE_PUBLIC_DATA=true` is explicitly set server-side for a trusted operator deployment that is protected externally.
 - Mutations are disabled by default. Non-read proxy requests return `403` unless `ENABLE_MUTATIONS=true`.
 - Settings and status views should show high-level posture labels, not secrets, API-key flags, env-style labels, raw paths, or private infrastructure hints.
 - Demo/live/live-partial/degraded state is labeled so public demos are not mistaken for private production memory.
+
+This app does not currently implement its own operator login, session, or role checks. Treat `ALLOW_LIVE_PUBLIC_DATA=true` as a live-private data opt-in for deployments that already have an external access-control boundary such as a private network, VPN, SSO proxy, or equivalent.
 
 Do not commit `.env.local`, real API keys, private workspace ids, private hostnames, or deployment-only notes.
 

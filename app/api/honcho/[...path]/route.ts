@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardEnv } from '../../../../lib/env.js';
 import { isAllowedProxyPath, isReadOnlyPostPath } from '../../../../lib/proxy-policy.js';
-import { sanitizePublicValue } from '../../../../lib/data-utils.js';
+import { protectPublicProxyResponse } from '../../../../lib/data-utils.js';
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 async function proxy(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
   const env = getDashboardEnv();
@@ -31,7 +31,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
     const contentType = response.headers.get('content-type') || 'application/json';
     if (contentType.includes('application/json')) {
       try {
-        return NextResponse.json(sanitizePublicValue(JSON.parse(body)), { status: response.status, headers: { 'cache-control': 'no-store' } });
+        return NextResponse.json(protectPublicProxyResponse(JSON.parse(body), normalizedPath), { status: response.status, headers: { 'cache-control': 'no-store' } });
       } catch {
         return NextResponse.json({ ok: false, error: 'malformed-json', message: 'Honcho API returned malformed JSON.' }, { status: 502, headers: { 'cache-control': 'no-store' } });
       }

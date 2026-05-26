@@ -60,9 +60,9 @@ Open http://localhost:3000.
 
 Public mode is the safe default. It may show demo content, high-level posture labels, and sanitized Kanban task runtime from a read-only DB mount, but it must not show raw Honcho memory, raw messages, private peer metadata, env-style diagnostic labels, API-key flags, raw runtime paths, private network hints, tokens, or real operational message bodies.
 
-Operator/live-private mode requires `ALLOW_LIVE_PUBLIC_DATA=true` in the server environment and should be served behind authentication. `ENABLE_MUTATIONS=true` is separate and should stay false unless write paths were intentionally reviewed.
+Operator/live-private mode requires `ALLOW_LIVE_PUBLIC_DATA=true` in the server environment and should be served only behind an external access-control boundary such as a private network, VPN, SSO proxy, or equivalent. This app does not currently implement its own operator login, session, or role checks. `ENABLE_MUTATIONS=true` is separate and should stay false unless write paths were intentionally reviewed.
 
-See `docs/PUBLIC_OPERATOR_MODES.md` for the redaction boundary, explicit live-private opt-in, Kanban DB mount examples, wrong/default DB diagnostics, live-state grammar, and public onboarding checklist.
+See `docs/PUBLIC_OPERATOR_MODES.md` for the redaction boundary, explicit live-private opt-in, Kanban DB mount examples, wrong/default DB diagnostics, live-state grammar, and public onboarding checklist. See `docs/LIVE_KANBAN_AND_VISIBILITY.md` for the maintainer contract covering live Kanban sources, fallback behavior, verification, and public/operator message-body visibility.
 
 ## Quick start: live Honcho mode
 
@@ -115,7 +115,7 @@ npm run setup:local
 docker compose -f docker-compose.dashboard.yml up --build
 ```
 
-The compose file exposes port 3000. It reads `.env.local` and `runtime/dashboard.env` when present, mounts `runtime/kanban.db` read-only by default, and forces the in-container Kanban path to `/data/hermes/kanban.db` so local and container paths do not get mixed up. Configure the same environment variables listed above through local env files, your shell, or your deployment platform.
+The compose file exposes port 3000. It reads `.env.local` and `runtime/dashboard.env` when present, mounts `${HERMES_KANBAN_HOST_DB:-./runtime/kanban.db}` read-only, and forces the in-container Kanban path to `/data/hermes/kanban.db` so local and container paths do not get mixed up. For current board data, set `HERMES_KANBAN_HOST_DB` to the active Hermes Kanban DB (or a mount path with SQLite sidecars visible) and keep `HERMES_KANBAN_SOURCE_MODE=live`; use `HERMES_KANBAN_SOURCE_MODE=snapshot` and `HERMES_KANBAN_SNAPSHOT_HOST_DB` only for copied static snapshots. Configure the same environment variables listed above through local env files, your shell, or your deployment platform.
 
 ## Main views
 
@@ -240,7 +240,7 @@ The Performance page reports dashboard-to-Honcho request telemetry collected dur
 
 ## Generic remote deploy helper
 
-`scripts/deploy-remote.sh` is an opt-in helper for operators who already have a private deployment target. It intentionally has no host, username, SSH key, remote path, workspace, or Kanban DB defaults in the public repository. Provide all deployment details through environment variables in your private shell, CI secret store, or ops wrapper. When the remote incoming directory already contains a prepared `.env`, that file takes precedence over the currently deployed app `.env` so operator-selected live/rollback candidates drive the next Docker Compose runtime; if no prepared incoming `.env` exists, the helper preserves the currently deployed private env before falling back to `.env.example`/safe defaults. The helper also writes the selected env to `runtime/dashboard.env`, a non-dotfile `env_file` consumed by Compose so deploy helpers that copy only normal source paths still pass prepared env values into the container. The incoming cleanup keeps `.env.*` rollback candidate files in place while replacing source files.
+`scripts/deploy-remote.sh` is an opt-in helper for operators who already have a private deployment target. It intentionally has no host, username, SSH key, remote path, workspace, or Kanban DB defaults in the public repository. Provide all deployment details through environment variables in your private shell, CI secret store, or ops wrapper. When the remote incoming directory already contains a prepared `.env`, that file takes precedence over the currently deployed app `.env` so operator-selected live/rollback candidates drive the next Docker Compose runtime; if no prepared incoming `.env` exists, the helper preserves the currently deployed private env before falling back to `.env.example`/safe defaults. For live Kanban installs, pass `LIVE_KANBAN_HOST_DB=/path/to/active/kanban.db` so the remote container mount follows the current board without uploading a new snapshot; `LOCAL_KANBAN_DB=/path/to/sanitized-kanban-snapshot.db` remains available only for copied static snapshots and sets snapshot labeling. The helper also writes the selected env to `runtime/dashboard.env`, a non-dotfile `env_file` consumed by Compose so deploy helpers that copy only normal source paths still pass prepared env values into the container. The incoming cleanup keeps `.env.*` rollback candidate files in place while replacing source files.
 
 ```bash
 DEPLOY_HOST=example-host \
@@ -252,6 +252,8 @@ DEPLOY_COMMAND=/path/to/deploy-command \
 LOCAL_KANBAN_DB=/path/to/sanitized-kanban-snapshot.db \
 ./scripts/deploy-remote.sh
 ```
+
+For a live Kanban mount, replace `LOCAL_KANBAN_DB` with `LIVE_KANBAN_HOST_DB=/path/to/active/kanban.db`.
 
 ## Verification commands
 

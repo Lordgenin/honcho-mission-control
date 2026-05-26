@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDashboardEnv, getPublicDashboardEnv } from '../lib/env.js';
-import { createRouteScopedSnapshot, discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion, resetPerformanceTelemetryHistory, sanitizePublicValue, summarizePerformanceTelemetry, templateEndpointPath } from '../lib/data-utils.js';
+import { createRouteScopedSnapshot, discoverAgents, filterCollection, getConclusionProvenanceLabel, getPeerDiscoveryFailure, getSessionMessageCountLabel, getSnapshotPosture, getSubsystemStatuses, normalizeConclusion, protectPublicProxyResponse, protectUnauthenticatedLiveSnapshot, resetPerformanceTelemetryHistory, sanitizePublicValue, summarizePerformanceTelemetry, templateEndpointPath } from '../lib/data-utils.js';
 import { getDemoSnapshot } from '../lib/demo-data.js';
 import { getHonchoSnapshot } from '../lib/honcho-client.js';
 import { getHealthPayload } from '../lib/health.js';
@@ -247,7 +247,7 @@ test('getHonchoSnapshot reads v3 workspace-scoped lists and derives session mess
   }
 });
 
-test('getHonchoSnapshot in unauthenticated live mode strips message and memory bodies while preserving safe counts', async () => {
+test('getHonchoSnapshot in externally protected operator mode shows sanitized message and memory bodies', async () => {
   const originalFetch = globalThis.fetch;
   const originalEnv = { ...process.env };
   process.env.HONCHO_BASE_URL = 'http://honcho.example';
@@ -273,17 +273,99 @@ test('getHonchoSnapshot in unauthenticated live mode strips message and memory b
     assert.equal(snapshot.source, 'live');
     assert.equal(snapshot.readOnly, true);
     assert.equal(snapshot.messages.length, 1);
-    assert.equal(snapshot.messages[0].content, '[redacted: live message body hidden without operator authentication]');
+    assert.equal(snapshot.messages[0].content, 'Live dashboard message from the configured workspace; [redacted] should not leak');
     assert.equal(snapshot.sessions[0].message_count, 1);
-    assert.equal(snapshot.conclusions[0].text, '[redacted: live memory text hidden without operator authentication]');
-    assert.equal(serialized.includes('Live dashboard message from the configured workspace'), false);
-    assert.equal(serialized.includes('Use scoped live dashboard data for the operator'), false);
+    assert.equal(snapshot.conclusions[0].text, 'Use scoped live dashboard data for the operator');
+    assert.equal(serialized.includes('Live dashboard message from the configured workspace'), true);
+    assert.equal(serialized.includes('Use scoped live dashboard data for the operator'), true);
     assert.equal(serialized.includes('HONCHO_API_KEY'), false);
     assert.equal(serialized.includes('secret-token-value'), false);
     assert.equal(serialized.includes('\"raw\"'), false);
   } finally {
     globalThis.fetch = originalFetch;
     process.env = originalEnv;
+  }
+});
+
+test('protectUnauthenticatedLiveSnapshot strips message and memory bodies with public-mode copy', () => {
+  const protectedSnapshot = protectUnauthenticatedLiveSnapshot({
+    readOnly: false,
+    workspaces: [{ id: 'workspace-1', summary: 'private workspace detail' }],
+    sessions: [{ id: 'session-1', title: 'private session detail', message_count: 2 }],
+    messages: [{ id: 'message-1', content: 'public viewers must not see this operator message' }],
+    conclusions: [{ id: 'conclusion-1', text: 'public viewers must not see this conclusion' }]
+  });
+  const serialized = JSON.stringify(protectedSnapshot);
+
+  assert.equal(protectedSnapshot.readOnly, true);
+  assert.equal(protectedSnapshot.messages[0].content, '[redacted: live message body hidden in public/unauthenticated mode]');
+  assert.equal(protectedSnapshot.conclusions[0].text, '[redacted: live memory text hidden in public/unauthenticated mode]');
+  assert.equal(serialized.includes('without operator authentication'), false);
+  assert.equal(serialized.includes('public viewers must not see'), false);
+});
+
+test('public Honcho proxy response shaping strips arbitrary message and conclusion bodies by resource path', () => {
+  const proxyMessages = protectPublicProxyResponse({
+    messages: [
+      {
+        id: 'message-1',
+        workspace_id: 'workspace-1',
+        session_id: 'session-1',
+        role: 'user',
+        content: 'Plain harmless-looking sentence that regex sanitizers would not redact',
+        text: 'Another plain sentence that must not reach a browser',
+        raw: { debug: 'raw body' }
+      }
+    ]
+  }, ['v3', 'workspaces', 'workspace-1', 'sessions', 'session-1', 'messages', 'list']);
+  const proxyConclusions = protectPublicProxyResponse({
+    items: [
+      {
+        id: 'conclusion-1',
+        workspace_id: 'workspace-1',
+        text: 'Benign-looking memory conclusion that is still private',
+        content: 'Fallback conclusion body must also be redacted',
+        confidence: 0.81
+      }
+    ]
+  }, ['v3', 'workspaces', 'workspace-1', 'conclusions', 'list']);
+  const serialized = JSON.stringify({ proxyMessages, proxyConclusions });
+
+  assert.equal(proxyMessages.messages[0].content, '[redacted: live message body hidden in public/unauthenticated mode]');
+  assert.equal(proxyMessages.messages[0].text, '[redacted: live message body hidden in public/unauthenticated mode]');
+  assert.equal(proxyMessages.messages[0].session_id, 'session-1');
+  assert.equal(proxyConclusions.items[0].text, '[redacted: live memory text hidden in public/unauthenticated mode]');
+  assert.equal(proxyConclusions.items[0].content, '[redacted: live memory text hidden in public/unauthenticated mode]');
+  assert.equal(proxyConclusions.items[0].confidence, 0.81);
+  assert.equal(serialized.includes('Plain harmless-looking sentence'), false);
+  assert.equal(serialized.includes('Benign-looking memory conclusion'), false);
+  assert.equal(serialized.includes('\\"raw\\"'), false);
+});
+
+test('public Honcho proxy response shaping leaves non-body resources sanitized without message redaction', () => {
+  const proxyPeers = protectPublicProxyResponse({ peers: [{ id: 'peer-1', name: 'Visible peer', raw: { token: 'secret-token-value' } }] }, ['v3', 'workspaces', 'workspace-1', 'peers', 'list']);
+
+  assert.equal(proxyPeers.peers[0].name, 'Visible peer');
+  assert.equal(JSON.stringify(proxyPeers).includes('raw'), false);
+  assert.equal(JSON.stringify(proxyPeers).includes('secret-token-value'), false);
+});
+
+test('public docs and UI copy do not imply built-in operator authentication exists', async () => {
+  const fs = await import('node:fs/promises');
+  const files = [
+    '../README.md',
+    '../components/views.tsx',
+    '../lib/data-utils.js',
+    '../docs/PUBLIC_OPERATOR_MODES.md',
+    '../docs/public-self-hosting.md',
+    '../docs/SELF_HOSTING.md',
+    '../docs/API_CLIENT.md',
+    '../docs/local-startup.md'
+  ];
+
+  for (const file of files) {
+    const source = await fs.readFile(new URL(file, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /without operator authentication|operator-authenticated|behind authentication|authenticated\/private operator|authenticated operator/i, file);
   }
 });
 
@@ -425,7 +507,8 @@ test('health payload reports safe build, public mode, and redacted Kanban diagno
       ENABLE_MUTATIONS: 'false',
       HERMES_KANBAN_DBS: '/data/hermes/kanban.db',
       HERMES_KANBAN_DB: '/data/hermes/kanban.db',
-      HERMES_KANBAN_DATABASE: '/data/hermes/kanban.db'
+      HERMES_KANBAN_DATABASE: '/data/hermes/kanban.db',
+      HERMES_KANBAN_SOURCE_MODE: 'live'
     }
   });
 
@@ -436,6 +519,7 @@ test('health payload reports safe build, public mode, and redacted Kanban diagno
   assert.equal(payload.kanban.container_mount, undefined);
   assert.equal(typeof payload.kanban.source_readable, 'boolean');
   assert.equal(payload.kanban.source_label, 'container-mounted-db');
+  assert.equal(payload.kanban.source_mode, 'live');
   assert.equal(JSON.stringify(payload).includes('/data/hermes/kanban.db'), false);
   assert.equal(JSON.stringify(payload).includes('/root/.hermes'), false);
 });
@@ -464,4 +548,21 @@ test('health payload labels static Kanban snapshots without exposing raw paths',
   assert.equal(payload.kanban.source_mode, 'static-snapshot');
   assert.equal(payload.kanban.snapshot_reason, 'copied-db-snapshot');
   assert.equal(JSON.stringify(payload).includes('/private/copied-kanban.db'), false);
+});
+
+test('health payload lets explicit live mode override stale legacy Kanban snapshot env', () => {
+  const payload = getHealthPayload({
+    now: new Date('2026-05-25T00:00:00Z'),
+    envSource: {
+      HERMES_KANBAN_DBS: '/data/hermes/kanban.db',
+      HERMES_KANBAN_DB: '/data/hermes/kanban.db',
+      HERMES_KANBAN_SOURCE_MODE: 'live',
+      HERMES_KANBAN_SNAPSHOT_HOST_DB: '/private/stale-copied-kanban.db'
+    }
+  });
+
+  assert.equal(payload.kanban.source_label, 'container-mounted-db');
+  assert.equal(payload.kanban.source_mode, 'live');
+  assert.equal(payload.kanban.snapshot_reason, undefined);
+  assert.equal(JSON.stringify(payload).includes('/private/stale-copied-kanban.db'), false);
 });

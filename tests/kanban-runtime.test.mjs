@@ -265,3 +265,55 @@ test('getKanbanRuntimeSnapshot clearly labels copied static Kanban snapshots wit
   assert.equal(snapshot.sources[0].state, 'static-snapshot');
   assert.equal(JSON.stringify(snapshot).includes('/private/copied-snapshot.db'), false);
 });
+
+test('getKanbanRuntimeSnapshot uses live SQLite read mode unless source mode is snapshot', () => {
+  const calls = [];
+  const execFileSyncImpl = (_cmd, args) => {
+    calls.push(args);
+    return JSON.stringify({ tasks: [], runs: [], events: [] });
+  };
+
+  getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: { HERMES_KANBAN_DBS: '/private/live-board.db', HERMES_KANBAN_SOURCE_MODE: 'live' },
+    execFileSyncImpl
+  });
+  getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: { HERMES_KANBAN_DBS: '/private/snapshot.db', HERMES_KANBAN_SOURCE_MODE: 'snapshot' },
+    execFileSyncImpl
+  });
+
+  assert.equal(calls[0].at(-2), 'live');
+  assert.equal(calls[0].at(-1), '/private/live-board.db');
+  assert.equal(calls[1].at(-2), 'snapshot');
+  assert.equal(calls[1].at(-1), '/private/snapshot.db');
+});
+
+test('getKanbanRuntimeSnapshot lets explicit live source mode override stale legacy snapshot env', () => {
+  const snapshot = getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: {
+      HERMES_KANBAN_DBS: '/private/live-board.db',
+      HERMES_KANBAN_SOURCE_MODE: 'live',
+      HERMES_KANBAN_SNAPSHOT_HOST_DB: '/private/stale-snapshot.db'
+    },
+    execFileSyncImpl: (_cmd, args) => {
+      assert.equal(args.at(-2), 'live');
+      return JSON.stringify({
+        tasks: [{ id: 't_live_override', title: 'Live mode wins', assignee: 'jarvis', status: 'running', created_at: 1779709700, started_at: 1779709800 }],
+        runs: [{ task_id: 't_live_override', profile: 'jarvis', status: 'running', last_heartbeat_at: 1779709980, started_at: 1779709800 }],
+        events: []
+      });
+    }
+  });
+
+  assert.equal(snapshot.state, 'available');
+  assert.equal(snapshot.source, 'hermes-kanban:configured-db-1');
+  assert.equal(snapshot.freshness.state, 'live');
+  assert.equal(snapshot.freshness.snapshot_reason, undefined);
+  assert.equal(snapshot.sources[0].label, 'configured-db-1');
+  assert.equal(snapshot.sources[0].state, 'available');
+  assert.equal(snapshot.snapshot, undefined);
+  assert.equal(JSON.stringify(snapshot).includes('/private/stale-snapshot.db'), false);
+});

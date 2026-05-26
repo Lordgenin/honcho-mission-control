@@ -28,6 +28,9 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ARCHIVE="/tmp/honcho-mission-control-${REV}-${STAMP}.tar.gz"
 REMOTE_ARCHIVE="/tmp/honcho-mission-control-${REV}-${STAMP}.tar.gz"
 LOCAL_KANBAN_DB="${LOCAL_KANBAN_DB:-}"
+LIVE_KANBAN_HOST_DB="${LIVE_KANBAN_HOST_DB:-}"
+DEPLOY_HEALTH_URL="${DEPLOY_HEALTH_URL:-http://$REMOTE_HOST:3000/api/health}"
+EXPECT_LIVE_KANBAN="${EXPECT_LIVE_KANBAN:-}"
 REMOTE_KANBAN_DB=""
 SSH=(ssh -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$REMOTE_USER@$REMOTE_HOST")
 SCP=(scp -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
@@ -58,7 +61,7 @@ else
 fi
 
 echo "Installing source into incoming deploy directory with safe public defaults..."
-"${SSH[@]}" "REMOTE_APP='$REMOTE_APP' REMOTE_INCOMING='$REMOTE_INCOMING' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' REMOTE_KANBAN_DB='$REMOTE_KANBAN_DB' REV='$REV' bash -s" <<'REMOTE'
+"${SSH[@]}" "REMOTE_APP='$REMOTE_APP' REMOTE_INCOMING='$REMOTE_INCOMING' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' REMOTE_KANBAN_DB='$REMOTE_KANBAN_DB' LIVE_KANBAN_HOST_DB='$LIVE_KANBAN_HOST_DB' REV='$REV' bash -s" <<'REMOTE'
 set -Eeuo pipefail
 mkdir -p "$REMOTE_INCOMING"
 TMPDIR="/tmp/honcho-mission-control-src-$REV-$$"
@@ -100,19 +103,45 @@ set_default_kv() {
     printf '%s=%s\n' "$key" "$value" >> "$file"
   fi
 }
+unset_kv() {
+  key="$1"; file="$2"
+  if grep -q "^${key}=" "$file"; then
+    python3 - "$key" "$file" <<'PY'
+from pathlib import Path
+import sys
+key, path = sys.argv[1], Path(sys.argv[2])
+lines = [line for line in path.read_text().splitlines() if not line.startswith(key + '=')]
+path.write_text('\n'.join(lines) + ('\n' if lines else ''))
+PY
+  fi
+}
 set_default_kv USE_DEMO_DATA false "$TMPDIR/.env"
 set_default_kv ALLOW_LIVE_PUBLIC_DATA false "$TMPDIR/.env"
 set_default_kv HERMES_KANBAN_DBS /data/hermes/kanban.db "$TMPDIR/.env"
 set_default_kv HERMES_KANBAN_DB /data/hermes/kanban.db "$TMPDIR/.env"
 set_default_kv HERMES_KANBAN_DATABASE /data/hermes/kanban.db "$TMPDIR/.env"
-if [ -n "$REMOTE_KANBAN_DB" ] && [ -r "$REMOTE_KANBAN_DB" ]; then
+if [ -n "$LIVE_KANBAN_HOST_DB" ]; then
+  set_kv HERMES_KANBAN_HOST_DB "$LIVE_KANBAN_HOST_DB" "$TMPDIR/.env"
+  set_kv HERMES_KANBAN_SOURCE_MODE live "$TMPDIR/.env"
+  unset_kv HERMES_KANBAN_SNAPSHOT_HOST_DB "$TMPDIR/.env"
+  python3 - "$LIVE_KANBAN_HOST_DB" "$TMPDIR/docker-compose.dashboard.yml" <<'PY'
+from pathlib import Path
+import sys
+live_host_db, compose_path = sys.argv[1], Path(sys.argv[2])
+text = compose_path.read_text()
+text = text.replace('${HERMES_KANBAN_HOST_DB:-./runtime/kanban.db}', '${HERMES_KANBAN_HOST_DB:-' + live_host_db + '}')
+compose_path.write_text(text)
+PY
+elif [ -n "$REMOTE_KANBAN_DB" ] && [ -r "$REMOTE_KANBAN_DB" ]; then
   mkdir -p "$TMPDIR/runtime"
   cp "$REMOTE_KANBAN_DB" "$TMPDIR/runtime/kanban.db"
   rm -f "$REMOTE_KANBAN_DB"
   set_kv HERMES_KANBAN_HOST_DB "$REMOTE_INCOMING/runtime/kanban.db" "$TMPDIR/.env"
+  set_kv HERMES_KANBAN_SOURCE_MODE snapshot "$TMPDIR/.env"
   set_kv HERMES_KANBAN_SNAPSHOT_HOST_DB "$REMOTE_INCOMING/runtime/kanban.db" "$TMPDIR/.env"
 else
   set_default_kv HERMES_KANBAN_HOST_DB '' "$TMPDIR/.env"
+  set_default_kv HERMES_KANBAN_SOURCE_MODE live "$TMPDIR/.env"
 fi
 mkdir -p "$TMPDIR/runtime"
 cp "$TMPDIR/.env" "$TMPDIR/runtime/dashboard.env"
@@ -125,5 +154,22 @@ REMOTE
 
 echo "Running configured deploy helper..."
 "${SSH[@]}" "sudo -n '$REMOTE_DEPLOY_CMD'"
+
+if [ "$EXPECT_LIVE_KANBAN" = "true" ] || [ -n "$LIVE_KANBAN_HOST_DB" ]; then
+  echo "Verifying deployed health does not report a static Kanban snapshot in live mode..."
+  HEALTH_JSON="$(curl -fsS "$DEPLOY_HEALTH_URL")"
+  HEALTH_JSON="$HEALTH_JSON" python3 - <<'PY'
+import json, os
+payload = json.loads(os.environ.get('HEALTH_JSON') or '{}')
+kanban = payload.get('kanban') or {}
+source_mode = kanban.get('source_mode')
+source_label = kanban.get('source_label')
+if source_mode == 'static-snapshot' or source_label == 'static-snapshot-db':
+    raise SystemExit(f'live Kanban deployment rejected static snapshot health: source_mode={source_mode!r}, source_label={source_label!r}')
+if not kanban.get('configured'):
+    raise SystemExit('live Kanban deployment rejected unconfigured Kanban health')
+print(f"live Kanban health accepted: source_mode={source_mode}, source_label={source_label}, source_readable={kanban.get('source_readable')}")
+PY
+fi
 
 echo "Deployment script completed. Source revision: main@$REV"

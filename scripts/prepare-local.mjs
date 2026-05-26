@@ -22,7 +22,10 @@ ALLOW_LIVE_PUBLIC_DATA=false
 HERMES_KANBAN_DBS=./runtime/kanban.db
 HERMES_KANBAN_DB=./runtime/kanban.db
 HERMES_KANBAN_DATABASE=./runtime/kanban.db
-HERMES_KANBAN_SNAPSHOT_HOST_DB=./runtime/kanban.db
+# Docker Compose host-side live board mount. Replace with your active Kanban DB path.
+HERMES_KANBAN_HOST_DB=./runtime/kanban.db
+# Use live for mounted active boards; use snapshot only for copied/static DB files.
+HERMES_KANBAN_SOURCE_MODE=live
 NEXT_PUBLIC_DASHBOARD_NAME=Honcho Mission Control
 `;
 
@@ -37,6 +40,8 @@ ALLOW_LIVE_PUBLIC_DATA=false
 HERMES_KANBAN_DBS=/data/hermes/kanban.db
 HERMES_KANBAN_DB=/data/hermes/kanban.db
 HERMES_KANBAN_DATABASE=/data/hermes/kanban.db
+HERMES_KANBAN_HOST_DB=./runtime/kanban.db
+HERMES_KANBAN_SOURCE_MODE=live
 NEXT_PUBLIC_DASHBOARD_NAME=Honcho Mission Control
 `;
 
@@ -50,7 +55,7 @@ function ensureEmptyKanbanDb(dbPath) {
   if (fs.existsSync(dbPath)) {
     const stat = fs.statSync(dbPath);
     if (stat.isDirectory()) {
-      throw new Error(`${path.relative(root, dbPath)} is a directory, not a SQLite file. Remove it or choose a different HERMES_KANBAN_SNAPSHOT_HOST_DB.`);
+      throw new Error(`${path.relative(root, dbPath)} is a directory, not a SQLite file. Remove it or choose a different HERMES_KANBAN_HOST_DB.`);
     }
     return 'kept';
   }

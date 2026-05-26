@@ -11,6 +11,7 @@ services:
       HERMES_KANBAN_DBS: /data/hermes/kanban.db
       HERMES_KANBAN_DB: /data/hermes/kanban.db
       HERMES_KANBAN_DATABASE: /data/hermes/kanban.db
+      HERMES_KANBAN_SOURCE_MODE: "${HERMES_KANBAN_SOURCE_MODE:-live}"
     volumes:
-      - "${HERMES_KANBAN_SNAPSHOT_HOST_DB:-./runtime/kanban.db}:/data/hermes/kanban.db:ro"
+      - "${HERMES_KANBAN_HOST_DB:-./runtime/kanban.db}:/data/hermes/kanban.db:ro"
     restart: unless-stopped

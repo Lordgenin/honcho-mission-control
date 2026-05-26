@@ -8,10 +8,10 @@ Honcho Mission Control is designed to be safe to publish before it is connected 
 | --- | --- | --- | --- | --- |
 | Public demo | Anyone evaluating the repo | `USE_DEMO_DATA=true` or no live-data opt-in | Bundled sample workspaces, agents, messages, conclusions, status grammar, and onboarding copy | Real Honcho memory, live messages, private workspace ids, raw paths, tokens, private hosts, or operator notes |
 | Public protected | Public/shared dashboard with live services configured server-side | default `ALLOW_LIVE_PUBLIC_DATA=false` | Safe posture labels, public health posture, sanitized Kanban runtime if mounted read-only, demo/redacted Honcho content | Raw Honcho messages, conclusions, peer metadata, API-key flags, env-style labels, raw runtime paths, private infrastructure hints |
-| Operator live-private | Trusted operator view behind authentication | `ALLOW_LIVE_PUBLIC_DATA=true` set server-side | Live Honcho resources and sanitized Kanban runtime with source/freshness/provenance labels | Browser-visible API keys, bearer tokens, private secrets, unsanitized stack traces, raw filesystem errors |
+| Operator live-private | Trusted deployment protected by external access control | `ALLOW_LIVE_PUBLIC_DATA=true` set server-side | Live Honcho resources and sanitized Kanban runtime with source/freshness/provenance labels | Browser-visible API keys, bearer tokens, private secrets, unsanitized stack traces, raw filesystem errors |
 | Mutation-enabled operator | Trusted private deployment only | `ENABLE_MUTATIONS=true` after review | Explicitly reviewed write-capable proxy routes | Public writes, surprise mutations, or enabled controls in unauthenticated/public deployments |
 
-Important: `ALLOW_LIVE_PUBLIC_DATA=true` is a live-private opt-in, not a public-readiness flag. Keep it false for public demos unless the dashboard is behind an authentication layer and the data is safe for that audience.
+Important: `ALLOW_LIVE_PUBLIC_DATA=true` is a live-private opt-in, not a public-readiness flag or built-in auth mechanism. Keep it false for public demos unless the dashboard is already protected by external access control and the data is safe for that audience.
 
 ## Public-mode redaction boundary
 
@@ -38,7 +38,7 @@ HONCHO_WORKSPACE_ID=workspace-example
 HONCHO_API_KEY=<server-side-secret>
 ```
 
-Then protect the dashboard with your normal operator authentication before exposing it beyond a trusted environment. Browser code should still call only the Next.js proxy; the browser should never receive the upstream API key.
+Then protect the dashboard with your normal external access-control boundary before exposing it beyond a trusted environment. Browser code should still call only the Next.js proxy; the browser should never receive the upstream API key. This app does not currently implement its own operator login, session, or role checks.
 
 ## Kanban DB configuration for agent-company style boards
 
@@ -99,7 +99,7 @@ CLI-originated work can appear when it is recorded in the mounted Kanban DB as t
 
 Before publishing a demo link, README screenshot, or repository example:
 
-- Start in demo or public protected mode; keep `ALLOW_LIVE_PUBLIC_DATA=false` unless the link is authenticated and private.
+- Start in demo or public protected mode; keep `ALLOW_LIVE_PUBLIC_DATA=false` unless the link is private and protected by external access control.
 - Keep `ENABLE_MUTATIONS=false` for public/shared deployments.
 - Use placeholder Honcho origins, workspace ids, and Kanban paths in docs and screenshots.
 - Verify public pages do not expose private memory, raw messages, private hosts, local paths, env-style labels, API-key flags, tokens, or real operational message bodies.

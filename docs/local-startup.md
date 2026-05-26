@@ -18,8 +18,8 @@ Required only for live-private mode:
 
 Optional for Hermes agent activity:
 
-- A Hermes Kanban SQLite DB mounted or copied read-only for the dashboard.
-- For Docker Compose, the container-visible path is `/data/hermes/kanban.db` and the host source is `HERMES_KANBAN_SNAPSHOT_HOST_DB`.
+- A Hermes Kanban SQLite DB mounted read-only for the dashboard.
+- For Docker Compose live mode, the container-visible path is `/data/hermes/kanban.db` and the host source is `HERMES_KANBAN_HOST_DB`. Reserve `HERMES_KANBAN_SNAPSHOT_HOST_DB` / `HERMES_KANBAN_SOURCE_MODE=snapshot` for copied point-in-time snapshots only.
 
 ## One-time local preparation
 
@@ -65,7 +65,7 @@ Open http://localhost:3000. The compose file reads `.env.local` if present, then
 
 ## Connect to your live Honcho data
 
-Use live-private mode only on a trusted operator-only dashboard, ideally behind authentication.
+Use live-private mode only on a trusted operator-only dashboard protected by an external access-control boundary. This app does not currently implement its own operator login, session, or role checks.
 
 Edit `.env.local` for Node.js or `runtime/dashboard.env` for Docker Compose:
 
@@ -109,13 +109,24 @@ HERMES_KANBAN_DB=/path/to/kanban.db
 HERMES_KANBAN_DATABASE=/path/to/kanban.db
 ```
 
-For Docker Compose, keep the app's in-container path as `/data/hermes/kanban.db` and set the host source separately:
+For Docker Compose, keep the app's in-container path as `/data/hermes/kanban.db` and set the live host source separately. Prefer mounting the active board DB directory or a DB path whose SQLite sidecars are visible to the container so WAL-backed writes appear without rebuilding a snapshot:
 
 ```bash
-HERMES_KANBAN_SNAPSHOT_HOST_DB=/path/to/kanban.db docker compose -f docker-compose.dashboard.yml up --build
+HERMES_KANBAN_HOST_DB=/path/to/kanban.db \
+HERMES_KANBAN_SOURCE_MODE=live \
+docker compose -f docker-compose.dashboard.yml up --build
 ```
 
-Prefer a copied/sanitized snapshot or a read-only mount. The dashboard reads task ids, safe task titles, assignees, statuses, and timestamps; it should not render task bodies, comments, run metadata, heartbeat notes, raw errors, host paths, private IPs, or secrets.
+Use a copied/sanitized snapshot only when you intentionally want static fallback behavior:
+
+```bash
+HERMES_KANBAN_HOST_DB=./runtime/kanban.db \
+HERMES_KANBAN_SOURCE_MODE=snapshot \
+HERMES_KANBAN_SNAPSHOT_HOST_DB=./runtime/kanban.db \
+docker compose -f docker-compose.dashboard.yml up --build
+```
+
+The dashboard reads task ids, safe task titles, assignees, statuses, and timestamps; it should not render task bodies, comments, run metadata, heartbeat notes, raw errors, host paths, private IPs, or secrets.
 
 ## Production-style local smoke test
 

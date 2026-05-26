@@ -88,7 +88,7 @@ export function ContextView({ snapshot }: { snapshot: any }) {
   const summary = snapshot.context_summary || {};
   const agentStatuses = Array.isArray(summary.agent_statuses) ? summary.agent_statuses : [];
   return <>
-    <Header title="Context" body="Public-safe context summary. Raw workspace/session/message identifiers and nested agent structures are minimized unless an operator-authenticated view is added."/>
+    <Header title="Context" body="Public-safe context summary. Raw workspace/session/message identifiers and nested agent structures are minimized in public mode; trusted operator deployments are externally access-controlled."/>
     <StatusBanner snapshot={snapshot}/>
     <div className="grid gap-4 md:grid-cols-4"><Stat label="Workspaces" value={summary.workspace_count ?? 0}/><Stat label="Agents" value={summary.agent_count ?? 0}/><Stat label="Recent messages" value={summary.recent_message_count ?? 0}/><Stat label="Conclusions" value={summary.conclusion_count ?? 0}/></div>
     <Card className="mt-6"><h3 className="text-xl font-semibold">Minimized context posture</h3><p className="mt-2 text-sm text-slate-300">{summary.note || 'Context is route-scoped and minimized for unauthenticated browsers.'}</p><p className="mt-2 text-xs text-slate-500">Kanban state: {summary.kanban_state || 'unknown'} · Source: {summary.source || snapshot.source || 'unknown'}</p></Card>

@@ -36,11 +36,11 @@ NEXT_PUBLIC_DASHBOARD_NAME="Honcho Mission Control"
 Notes:
 
 - `HONCHO_BASE_URL` points to your Honcho API origin.
-- `HONCHO_WORKSPACE_ID` is optional. Set it to scope the dashboard to one workspace, or leave it empty to list available workspaces in operator mode.
+- `HONCHO_WORKSPACE_ID` is optional. Set it to scope the dashboard to one workspace, or leave it empty to list available workspaces in live-private mode.
 - `HONCHO_API_KEY` is optional for deployments that do not require authentication, but if present it must be server-side only.
 - `ENABLE_MUTATIONS` should remain `false` for public or shared deployments unless you have reviewed and intentionally enabled every exposed write path.
 - `USE_DEMO_DATA=true` is the public/local default. Set it to `false` only in trusted operator mode together with `ALLOW_LIVE_PUBLIC_DATA=true`.
-- `ALLOW_LIVE_PUBLIC_DATA=false` is the public protected default. Set it to `true` only for authenticated/private operator deployments where live Honcho memory may render.
+- `ALLOW_LIVE_PUBLIC_DATA=false` is the public protected default. Set it to `true` only for trusted live-private deployments protected by an external access-control boundary where live Honcho memory may render.
 - `HERMES_KANBAN_DBS`, `HERMES_KANBAN_DB`, and `HERMES_KANBAN_DATABASE` identify optional container-visible Kanban DB files for sanitized agent runtime. Prefer a read-only mount or copied snapshot.
 
 ## Local run
@@ -65,7 +65,7 @@ Do not paste real API keys, private hostnames, internal addresses, or workspace 
 
 Before exposing the dashboard beyond your own machine or private network:
 
-- Serve it behind HTTPS and your normal authentication layer if live private data is enabled.
+- Serve it behind HTTPS and your normal external access-control layer if live private data is enabled; this app does not currently implement its own operator login, session, or role checks.
 - Keep `.env.local` and deployment secrets out of git.
 - Keep `HONCHO_API_KEY` server-side; browser code should call only the Next.js proxy.
 - Keep `ALLOW_LIVE_PUBLIC_DATA=false` for public demos or shared unauthenticated dashboards. Only set it true for trusted operator access.
