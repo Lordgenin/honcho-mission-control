@@ -450,3 +450,18 @@ test('health payload can reserve raw paths for explicit operator diagnostics', (
   assert.equal(payload.kanban.container_mount, undefined);
   assert.equal(payload.operator_diagnostics.kanban_container_mount, '/data/hermes/kanban.db');
 });
+
+test('health payload labels static Kanban snapshots without exposing raw paths', () => {
+  const payload = getHealthPayload({
+    now: new Date('2026-05-25T00:00:00Z'),
+    envSource: {
+      HERMES_KANBAN_DBS: '/data/hermes/kanban.db',
+      HERMES_KANBAN_SNAPSHOT_HOST_DB: '/private/copied-kanban.db'
+    }
+  });
+
+  assert.equal(payload.kanban.source_label, 'static-snapshot-db');
+  assert.equal(payload.kanban.source_mode, 'static-snapshot');
+  assert.equal(payload.kanban.snapshot_reason, 'copied-db-snapshot');
+  assert.equal(JSON.stringify(payload).includes('/private/copied-kanban.db'), false);
+});

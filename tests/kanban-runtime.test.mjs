@@ -224,3 +224,44 @@ test('getKanbanRuntimeSnapshot attaches per-source safe freshness metadata witho
   assert.equal(snapshot.sources[0].latest_event_at, '2026-05-25T11:53:00.000Z');
   assert.equal(JSON.stringify(snapshot).includes('/private/agent-company.db'), false);
 });
+
+test('getKanbanRuntimeSnapshot reflects status transitions on live configured board reads', () => {
+  let status = 'todo';
+  const read = () => getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: { HERMES_KANBAN_DBS: '/private/live-board.db' },
+    execFileSyncImpl: () => JSON.stringify({
+      tasks: [{ id: 't_transition', title: 'Transition freshness canary', assignee: 'breach', status, created_at: 1779709700, started_at: status === 'running' ? 1779709800 : null }],
+      runs: status === 'running' ? [{ task_id: 't_transition', profile: 'breach', status: 'running', last_heartbeat_at: 1779709980, started_at: 1779709800 }] : [],
+      events: []
+    })
+  });
+
+  assert.equal(read().agents[0].task_status, 'todo');
+  status = 'running';
+  const afterTransition = read();
+  assert.equal(afterTransition.agents[0].task_status, 'running');
+  assert.equal(afterTransition.agents[0].status, 'active');
+  assert.equal(afterTransition.freshness.state, 'live');
+  assert.equal(JSON.stringify(afterTransition).includes('/private/live-board.db'), false);
+});
+
+test('getKanbanRuntimeSnapshot clearly labels copied static Kanban snapshots with sanitized age and reason', () => {
+  const snapshot = getKanbanRuntimeSnapshot({
+    generatedAt,
+    env: { HERMES_KANBAN_DBS: '/private/copied-snapshot.db', HERMES_KANBAN_SNAPSHOT_HOST_DB: '/private/copied-snapshot.db' },
+    execFileSyncImpl: () => JSON.stringify({
+      tasks: [{ id: 't_snapshot', title: 'Snapshot canary', assignee: 'forge', status: 'running', created_at: 1779709700, started_at: 1779709800 }],
+      runs: [{ task_id: 't_snapshot', profile: 'forge', status: 'running', last_heartbeat_at: 1779709980, started_at: 1779709800 }],
+      events: []
+    })
+  });
+
+  assert.equal(snapshot.state, 'static-snapshot');
+  assert.equal(snapshot.source, 'hermes-kanban:static-snapshot');
+  assert.equal(snapshot.freshness.state, 'static-snapshot');
+  assert.equal(snapshot.freshness.snapshot_reason, 'copied-db-snapshot');
+  assert.equal(snapshot.sources[0].label, 'static-snapshot-db');
+  assert.equal(snapshot.sources[0].state, 'static-snapshot');
+  assert.equal(JSON.stringify(snapshot).includes('/private/copied-snapshot.db'), false);
+});
