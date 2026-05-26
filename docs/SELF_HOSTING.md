@@ -1,6 +1,6 @@
 # Self Hosting
 
-This guide explains how to run Honcho Mission Control for either local evaluation or a self-hosted Honcho deployment.
+This guide explains how to run Honcho Mission Control for either local evaluation or a self-hosted Honcho deployment. For the shortest fresh-clone path, start with `docs/local-startup.md`; this file adds production and security posture context.
 
 ## Security model
 
@@ -56,9 +56,9 @@ NEXT_PUBLIC_DASHBOARD_NAME=Honcho Mission Control
 ## Run locally with demo data
 
 ```bash
-cp .env.example .env.local
 npm install
-USE_DEMO_DATA=true npm run dev
+npm run setup:local
+npm run dev
 ```
 
 Open http://localhost:3000.
@@ -73,8 +73,10 @@ Expected result:
 ## Run locally against live Honcho
 
 ```bash
-cp .env.example .env.local
+npm run setup:local
 # edit .env.local for your Honcho server/workspace and set:
+# HONCHO_BASE_URL=<server-side Honcho URL>
+# HONCHO_WORKSPACE_ID=<optional workspace scope>
 # USE_DEMO_DATA=false
 # ALLOW_LIVE_PUBLIC_DATA=true
 npm install
@@ -106,11 +108,11 @@ Bind the app behind a reverse proxy when exposing it outside localhost or a trus
 ## Docker Compose
 
 ```bash
-cp .env.example .env.local
+npm run setup:local
 docker compose -f docker-compose.dashboard.yml up --build -d
 ```
 
-The compose file exposes port 3000 and uses `restart: unless-stopped`.
+The compose file exposes port 3000, reads `.env.local` and `runtime/dashboard.env` when present, mounts `runtime/kanban.db` read-only by default, and uses `restart: unless-stopped`.
 
 Check the container logs if the app does not become reachable:
 

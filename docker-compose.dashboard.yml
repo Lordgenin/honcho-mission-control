@@ -3,8 +3,14 @@ services:
     build: .
     ports: ["3000:3000"]
     env_file:
+      - path: ./.env.local
+        required: false
       - path: ./runtime/dashboard.env
         required: false
+    environment:
+      HERMES_KANBAN_DBS: /data/hermes/kanban.db
+      HERMES_KANBAN_DB: /data/hermes/kanban.db
+      HERMES_KANBAN_DATABASE: /data/hermes/kanban.db
     volumes:
       - "${HERMES_KANBAN_SNAPSHOT_HOST_DB:-./runtime/kanban.db}:/data/hermes/kanban.db:ro"
     restart: unless-stopped

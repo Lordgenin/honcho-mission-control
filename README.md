@@ -36,14 +36,14 @@ The repo is intended to be useful for two audiences: people evaluating the inter
 Demo mode is the fastest way to see the UI without connecting to Honcho.
 
 ```bash
-cp .env.example .env.local
 npm install
-USE_DEMO_DATA=true npm run dev
+npm run setup:local
+npm run dev
 ```
 
 Open http://localhost:3000.
 
-The shell should identify the source as demo data. The Agents page should show sample agents so you can understand the intended layout before wiring a live workspace.
+`npm run setup:local` creates ignored local defaults for Node.js, Docker Compose, and an empty safe Kanban SQLite snapshot so a fresh clone can start cleanly before you connect real services. The shell should identify the source as demo data. The Agents page should show sample agents so you can understand the intended layout before wiring a live workspace. See `docs/local-startup.md` for the full local/container startup path.
 
 ## Operator quickstart
 
@@ -100,7 +100,7 @@ Keep `.env.local` out of source control. `HONCHO_API_KEY` must only be configure
 ## Production-style local run
 
 ```bash
-cp .env.example .env.local
+npm run setup:local
 npm ci
 npm run build
 npm run start
@@ -111,11 +111,11 @@ Then open http://localhost:3000.
 ## Docker Compose
 
 ```bash
-cp .env.example .env.local
+npm run setup:local
 docker compose -f docker-compose.dashboard.yml up --build
 ```
 
-The compose file exposes port 3000. Configure the same environment variables listed above through `.env.local`, your shell, or your deployment platform.
+The compose file exposes port 3000. It reads `.env.local` and `runtime/dashboard.env` when present, mounts `runtime/kanban.db` read-only by default, and forces the in-container Kanban path to `/data/hermes/kanban.db` so local and container paths do not get mixed up. Configure the same environment variables listed above through local env files, your shell, or your deployment platform.
 
 ## Main views
 
@@ -269,6 +269,7 @@ Dependency security note: the project pins an npm `overrides.next.postcss` entry
 
 ## Documentation
 
+- `docs/local-startup.md` - fresh local/Compose startup, required services, env files, live-private opt-in, Kanban mounts, and smoke checks.
 - `docs/PUBLIC_OPERATOR_MODES.md` - public/operator modes, redaction boundary, Kanban DB configuration, live-state grammar, and safe onboarding checklist.
 - `docs/SELF_HOSTING.md` - deployment and security posture.
 - `docs/public-self-hosting.md` - safe public self-hosting guide and production checklist.
